@@ -493,16 +493,17 @@
                 }
             });
 
-            const totalJudges = appData.judges.length; 
+            // Use the Total Configured Judges for the division
+            const totalJudgesConfigured = appData.judges.length || 1; 
 
             Object.keys(results).forEach(id => {
-                if (results[id].judgeCounts > 0) {
-                    results[id].average = (results[id].totalScore / results[id].judgeCounts).toFixed(2);
-                } else {
-                    results[id].average = 0;
-                }
+                // Logic: Total Scores / Total Judges = Average
+                // This penalizes candidates who haven't been scored by all judges yet, which is correct for a "Total" based ranking
+                results[id].average = (results[id].totalScore / totalJudgesConfigured).toFixed(2);
             });
 
+            // Rank by Average (Highest to Lowest)
+            // Since Average = Total / Constant, this also ranks by Highest Total Score
             return Object.values(results).sort((a, b) => b.average - a.average);
         }
 
