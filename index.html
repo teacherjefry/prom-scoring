@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neerada School Prom Scoring</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <!-- Dynamic Favicon Hooks -->
+    <link id="favicon" rel="icon" type="image/png" href="data:image/x-icon;base64,">
+    <link id="apple-touch-icon" rel="apple-touch-icon" href="data:image/png;base64,">
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Lato:wght@300;400;700&display=swap');
+
+        :root {
+            --primary: #1e3a8a; /* Navy Blue */
+            --secondary: #fbbf24; /* Gold */
+            --bg-light: #f3f4f6;
+        }
+
+        body {
+            font-family: 'Lato', sans-serif;
+            background-color: var(--bg-light);
+        }
+
+        h1, h2, h3, .serif {
+            font-family: 'Playfair Display', serif;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #1e3a8a;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen text-gray-800 flex flex-col">
+
+    <!-- Notification Toast -->
+    <div id="toast" class="fixed top-5 right-5 z-50 transform translate-x-full transition-transform duration-300">
+        <div class="bg-blue-900 text-white px-6 py-4 rounded shadow-lg border-l-4 border-yellow-400 flex items-center">
+            <i class="fas fa-info-circle mr-3 text-yellow-400"></i>
+            <span id="toast-message">Notification</span>
+        </div>
+    </div>
+
+    <!-- Main App Container -->
+    <div id="app" class="flex-grow flex flex-col relative">
+        <!-- Content injected via JS -->
+    </div>
+
+    <!-- Firebase Configuration Modal (Fallback) -->
+    <div id="config-modal" class="fixed inset-0 bg-black bg-opacity-80 hidden z-[60] flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg p-6 max-w-md w-full shadow-2xl">
+            <h2 class="text-xl font-bold text-blue-900 mb-2">Connect Database</h2>
+            <p class="text-sm text-gray-600 mb-4">Paste your Firebase Config JSON object below to sync data across devices.</p>
+            <textarea id="firebase-config-input" rows="6" class="w-full border rounded p-2 text-xs font-mono bg-gray-50" placeholder='{ "apiKey": "...", "authDomain": "...", ... }'></textarea>
+            <div class="flex justify-end gap-2 mt-4">
+                <button onclick="document.getElementById('config-modal').classList.add('hidden')" class="px-4 py-2 text-gray-500 hover:text-gray-700">Cancel</button>
+                <button onclick="saveFirebaseConfig()" class="px-4 py-2 bg-blue-900 text-white rounded hover:bg-blue-800">Save & Connect</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getFirestore, doc, onSnapshot, setDoc, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+
+        // --- PASTE FIREBASE CONFIG HERE FOR GITHUB HOSTING ---
+        // Replace 'null' with your config object e.g. { apiKey: "...", ... }
+        const firebaseConfig = {
+  apiKey: "AIzaSyCQSj2qKMhhyFFexp_sm4vnUCNgeEtH1p4",
+  authDomain: "neerada-prom.firebaseapp.com",
+  projectId: "neerada-prom",
+  storageBucket: "neerada-prom.firebasestorage.app",
+  messagingSenderId: "716982986904",
+  appId: "1:716982986904:web:b569d64a7dfd34f02ec8ed"
+};
+
+        /**
+         * DEFAULT DATA & STRUCTURE
+         */
+        const DEFAULT_DATA = {
+            config: {
+                schoolName: "Neerada School",
+                eventName: "Prom King & Queen Search",
+                currentRound: "elimination", 
+                logoData: null,
+                faviconData: null
+            },
+            criteria: [
+                { id: 'poise', name: 'Poise & Bearing', weight: 25, max: 25 },
+                { id: 'stage', name: 'Stage Presence', weight: 25, max: 25 },
+                { id: 'appear', name: 'Overall Appearance', weight: 25, max: 25 },
+                { id: 'impact', name: 'Audience Impact', weight: 25, max: 25 }
+            ],
+            judges: ["Judge 1", "Judge 2", "Judge 3"],
+            candidates: [
+                { id: 1, number: 1, name: "Marcus Aurelius", gender: "Male", active: true, isFinalist: false },
+                { id: 2, number: 2, name: "Cleopatra VII", gender: "Female", active: true, isFinalist: false }
+            ],
+            scores: [] 
+        };
+
+        // State Containers
+        let db = null;
+        let auth = null;
+        let appData = JSON.parse(JSON.stringify(DEFAULT_DATA)); // Local mirror of DB
+        let currentUser = null; 
+        let unsubscribeSnapshot = null;
+        
+        // Environment Variables (Provided by Canvas)
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'neerada-prom-default';
+
+        // --- INIT LOGIC ---
+
+        window.initApp = async function() {
+            // 1. Try to recover user session from LocalStorage (Persistence)
+            const savedUser = localStorage.getItem('neerada_user');
+            if (savedUser) {
+                currentUser = JSON.parse(savedUser);
+            }
+
+            // 2. Try to init Firebase
+            let config = null;
+            
+            // Priority 0: Hardcoded Config (For GitHub)
+            if (HARDCODED_FIREBASE_CONFIG) {
+                config = HARDCODED_FIREBASE_CONFIG;
+            }
+            // Priority 1: Environment Variable (Canvas)
+            else if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+                config = JSON.parse(__firebase_config);
+            } 
+            // Priority 2: User manually entered config (stored in LS)
+            else {
+                const manualConfig = localStorage.getItem('neerada_firebase_config');
+                if (manualConfig) config = JSON.parse(manualConfig);
+            }
+
+            if (config) {
+                await connectFirebase(config);
+            } else {
+                renderLanding(document.getElementById('app')); // Render landing with "Configure" option
+            }
+        };
+
+        async function connectFirebase(config) {
+            try {
+                const app = initializeApp(config);
+                auth = getAuth(app);
+                db = getFirestore(app);
+                
+                // Auth Priority: Custom Token -> Anonymous
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+                
+                // Set up Realtime Listener
+                setupRealtimeListener();
+                
+            } catch (error) {
+                console.error("Firebase Error:", error);
+                
+                let msg = "Database Connection Failed.";
+                if (error.code === 'auth/operation-not-allowed') {
+                    msg = "Error: Anonymous Auth not enabled in Firebase Console.";
+                } else if (error.code === 'permission-denied') {
+                    msg = "Error: Missing Permissions. Check Firestore Rules.";
+                }
+                
+                showToast(msg);
+                renderLanding(document.getElementById('app'));
+            }
+        }
+
+        function setupRealtimeListener() {
+            // Strict Path Compliance: artifacts/{appId}/public/data/{collection}/{doc}
+            // We use 'scoring_system' as the collection and 'state' as the document
+            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'scoring_system', 'state');
+            
+            unsubscribeSnapshot = onSnapshot(docRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    appData = docSnap.data();
+                    initBranding();
+                    renderApp(); // Re-render UI on every update
+                } else {
+                    // Initialize DB if empty
+                    setDoc(docRef, DEFAULT_DATA);
+                    appData = JSON.parse(JSON.stringify(DEFAULT_DATA));
+                    renderApp();
+                }
+            }, (error) => {
+                console.error("Sync Error:", error);
+                if (error.code === 'permission-denied') {
+                    showToast("Sync Error: Permission Denied. Is Firestore in Test Mode?");
+                } else {
+                    showToast("Sync Error: " + error.message);
+                }
+            });
+        }
+
+        // Global Action to Save Data
+        window.saveData = async function(newData) {
+            if (!db) return;
+            appData = newData; // Optimistic update
+            try {
+                // Strict Path Compliance
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'scoring_system', 'state');
+                await setDoc(docRef, newData);
+            } catch (e) {
+                console.error(e);
+                showToast("Error saving to database: " + e.message);
+            }
+        };
+
+        // --- HELPER FUNCTIONS ---
+
+        window.showConfigModal = function() {
+            document.getElementById('config-modal').classList.remove('hidden');
+        };
+
+        window.saveFirebaseConfig = function() {
+            const input = document.getElementById('firebase-config-input').value;
+            try {
+                const config = JSON.parse(input);
+                localStorage.setItem('neerada_firebase_config', JSON.stringify(config));
+                document.getElementById('config-modal').classList.add('hidden');
+                showToast("Config Saved. Connecting...");
+                window.location.reload(); // Reload to init with new config
+            } catch (e) {
+                alert("Invalid JSON Format");
+            }
+        };
+
+        function initBranding() {
+            if (appData.config.faviconData) {
+                document.getElementById('favicon').href = appData.config.faviconData;
+                document.getElementById('apple-touch-icon').href = appData.config.faviconData;
+            }
+        }
+
+        window.showToast = function(msg) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toast-message').innerText = msg;
+            toast.classList.remove('translate-x-full');
+            setTimeout(() => toast.classList.add('translate-x-full'), 3000);
+        };
+
+        // --- AUTH & ROUTING ---
+
+        window.login = function(role, name) {
+            currentUser = { role, name };
+            localStorage.setItem('neerada_user', JSON.stringify(currentUser));
+            renderApp();
+        };
+
+        window.logout = function() {
+            currentUser = null;
+            localStorage.removeItem('neerada_user');
+            renderApp();
+        };
+
+        window.loginJudge = function() {
+            const name = document.getElementById('judge-name-input').value;
+            login('judge', name);
+        };
+
+        function renderApp() {
+            const container = document.getElementById('app');
+            container.innerHTML = '';
+            
+            if (!db) {
+                renderLanding(container);
+                return;
+            }
+
+            if (!currentUser) {
+                renderLanding(container);
+            } else if (currentUser.role === 'judge') {
+                renderJudgeView(container);
+            } else if (currentUser.role === 'tabulator') {
+                renderTabulatorView(container);
+            }
+        }
+
+        // --- VIEWS ---
+
+        const components = {
+            footer: () => `<footer class="bg-blue-900 text-blue-200 py-4 text-center text-xs mt-auto border-t-4 border-yellow-500"><p>&copy; ${new Date().getFullYear()} Neerada School. All Rights Reserved.</p></footer>`,
+            header: (title, subtitle) => {
+                const logoHtml = appData.config.logoData 
+                    ? `<img src="${appData.config.logoData}" class="h-12 w-12 md:h-16 md:w-16 rounded-full border-2 border-yellow-400 object-cover bg-white mr-4">` 
+                    : `<div class="h-12 w-12 md:h-16 md:w-16 rounded-full border-2 border-yellow-400 flex items-center justify-center bg-blue-800 text-yellow-400 mr-4"><i class="fas fa-university text-xl"></i></div>`;
+
+                return `
+                <header class="bg-blue-900 text-white p-4 shadow-lg border-b-4 border-yellow-500 flex-shrink-0">
+                    <div class="container mx-auto flex justify-between items-center">
+                        <div class="flex items-center">
+                            ${logoHtml}
+                            <div>
+                                <h1 class="text-xl md:text-2xl font-bold serif text-yellow-400">${appData.config.schoolName}</h1>
+                                <p class="text-xs md:text-sm text-blue-200 uppercase tracking-widest">${subtitle}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            ${currentUser ? `<span class="bg-blue-800 px-3 py-1 rounded text-sm hidden md:inline-block"><i class="fas fa-user mr-2"></i>${currentUser.name}</span>` : ''}
+                            <button onclick="logout()" class="text-gray-300 hover:text-white transition" title="Logout"><i class="fas fa-sign-out-alt"></i></button>
+                        </div>
+                    </div>
+                </header>`;
+            }
+        };
+
+        function renderLanding(container) {
+            const isConfigured = !!db;
+            container.innerHTML = `
+                <div class="min-h-screen flex flex-col justify-between bg-blue-900 relative overflow-hidden">
+                    <div class="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
+                    <div class="flex-grow flex items-center justify-center p-4">
+                        <div class="bg-white p-8 rounded-xl shadow-2xl max-w-md w-full z-10 animate-fade-in relative">
+                            ${!isConfigured ? `<div class="absolute top-0 right-0 p-2"><button onclick="showConfigModal()" class="text-xs text-blue-500 underline">Configure Database</button></div>` : ''}
+                            
+                            <div class="text-center mb-8">
+                                ${appData.config.logoData 
+                                    ? `<img src="${appData.config.logoData}" class="h-24 w-24 mx-auto mb-4 rounded-full border-4 border-yellow-500 object-cover">` 
+                                    : `<i class="fas fa-crown text-5xl text-yellow-500 mb-4"></i>`
+                                }
+                                <h1 class="text-2xl font-bold text-blue-900 serif">${appData.config.schoolName}</h1>
+                                <p class="text-gray-500 font-bold">${appData.config.eventName}</p>
+                            </div>
+
+                            ${!isConfigured 
+                                ? `<div class="text-center text-red-500 p-4 border border-red-200 rounded bg-red-50">Database not connected.<br>Please click Configure in top right.</div>` 
+                                : `<div class="space-y-4">
+                                    <h3 class="text-sm font-bold text-gray-400 uppercase tracking-wide">Enter as</h3>
+                                    <div class="border rounded-lg p-4 hover:border-blue-500 cursor-pointer transition bg-gray-50 group" onclick="document.getElementById('judge-select').classList.remove('hidden')">
+                                        <div class="flex items-center">
+                                            <div class="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition"><i class="fas fa-gavel"></i></div>
+                                            <div class="ml-4"><h4 class="font-bold text-gray-800">Judge</h4><p class="text-xs text-gray-500">Score candidates</p></div>
+                                            <i class="fas fa-chevron-right ml-auto text-gray-300"></i>
+                                        </div>
+                                    </div>
+                                    <div class="border rounded-lg p-4 hover:border-yellow-500 cursor-pointer transition bg-gray-50 group" onclick="login('tabulator', 'Admin')">
+                                        <div class="flex items-center">
+                                            <div class="w-10 h-10 rounded-full bg-yellow-100 text-yellow-600 flex items-center justify-center group-hover:bg-yellow-500 group-hover:text-white transition"><i class="fas fa-calculator"></i></div>
+                                            <div class="ml-4"><h4 class="font-bold text-gray-800">Tabulator</h4><p class="text-xs text-gray-500">Manage rounds & results</p></div>
+                                            <i class="fas fa-chevron-right ml-auto text-gray-300"></i>
+                                        </div>
+                                    </div>
+                                </div>`
+                            }
+                            
+                            <div id="judge-select" class="hidden mt-6 pt-4 border-t">
+                                <label class="block text-sm font-bold mb-2">Select Your Name</label>
+                                <select id="judge-name-input" class="w-full p-2 border rounded mb-3">
+                                    ${appData.judges.map(j => `<option value="${j}">${j}</option>`).join('')}
+                                </select>
+                                <button onclick="loginJudge()" class="w-full bg-blue-900 text-white py-2 rounded font-bold hover:bg-blue-800">Start Scoring</button>
+                            </div>
+                        </div>
+                    </div>
+                    ${components.footer()}
+                </div>
+            `;
+        }
+
+        // --- LOGIC ---
+
+        function getCandidatesForRound() {
+            if (appData.config.currentRound === 'final') {
+                return appData.candidates.filter(c => c.isFinalist);
+            }
+            return appData.candidates.filter(c => c.active);
+        }
+
+        function calculateResults(round) {
+            const results = {};
+            const relevantScores = appData.scores.filter(s => s.round === round);
+            
+            appData.candidates.forEach(c => {
+                results[c.id] = { candidate: c, totalScore: 0, judgeCounts: 0, rawScores: {} };
+            });
+
+            relevantScores.forEach(s => {
+                if(results[s.candidateId]) {
+                    const sum = Object.values(s.scores).reduce((a, b) => a + parseFloat(b), 0);
+                    results[s.candidateId].totalScore += sum;
+                    results[s.candidateId].judgeCounts++;
+                    results[s.candidateId].rawScores[s.judge] = sum;
+                }
+            });
+
+            const totalJudges = appData.judges.length;
+
+            Object.keys(results).forEach(id => {
+                if (results[id].judgeCounts > 0) {
+                    // Average Logic: Total Score divided by number of judges who actually voted
+                    results[id].average = (results[id].totalScore / results[id].judgeCounts).toFixed(2);
+                } else {
+                    results[id].average = 0;
+                }
+            });
+
+            return Object.values(results).sort((a, b) => b.average - a.average);
+        }
+
+        // --- JUDGE VIEW RENDER ---
+
+        function renderJudgeView(container) {
+            const currentRound = appData.config.currentRound;
+            const candidates = getCandidatesForRound();
+            const getScore = (cId) => appData.scores.find(s => s.round === currentRound && s.judge === currentUser.name && s.candidateId === cId);
+            
+            let contentHtml = '';
+
+            // ELIMINATION: All Mixed, Sorted by Number
+            if (currentRound === 'elimination') {
+                const sortedCandidates = candidates.sort((a, b) => a.number - b.number);
+                contentHtml = `
+                    <div class="mb-8">
+                        <h3 class="text-blue-900 font-bold mb-4 border-b pb-2">All Candidates (By Number)</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                            ${sortedCandidates.map(c => renderCandidateCard(c, getScore(c.id))).join('')}
+                        </div>
+                    </div>
+                `;
+            } 
+            // FINAL: Split by Gender
+            else {
+                const males = candidates.filter(c => c.gender === 'Male');
+                const females = candidates.filter(c => c.gender === 'Female');
+                contentHtml = `
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div>
+                            <h3 class="text-blue-900 font-bold mb-4 border-b pb-2">Prom Kings</h3>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                ${males.map(c => renderCandidateCard(c, getScore(c.id))).join('')}
+                            </div>
+                        </div>
+                        <div>
+                            <h3 class="text-pink-900 font-bold mb-4 border-b pb-2">Prom Queens</h3>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                ${females.map(c => renderCandidateCard(c, getScore(c.id))).join('')}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            container.innerHTML = `
+                <div class="flex flex-col min-h-screen">
+                    ${components.header(appData.config.eventName, `${currentRound.toUpperCase()} ROUND`)}
+                    <main class="flex-grow p-4 md:p-8 max-w-6xl mx-auto w-full pb-20">
+                        <div class="flex justify-between items-center mb-6">
+                            <h2 class="text-xl font-bold text-gray-800">Judge Sheet</h2>
+                            <span class="text-sm bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full font-bold uppercase tracking-wider">${currentRound} Round</span>
+                        </div>
+                        ${contentHtml}
+                    </main>
+                    ${components.footer()}
+                </div>
+                ${renderScoreModal()}
+            `;
+        }
+
+        function renderCandidateCard(c, existingScore) {
+            const isScored = !!existingScore;
+            const scoreSum = existingScore ? Object.values(existingScore.scores).reduce((a,b)=>a+parseInt(b),0) : 0;
+            return `
+            <div onclick="window.openScoringModal(${c.id})" class="bg-white rounded-lg p-4 card-shadow hover:shadow-xl transition cursor-pointer border-l-4 ${c.gender === 'Male' ? 'border-blue-500' : 'border-pink-500'} relative overflow-hidden group">
+                <div class="absolute top-0 right-0 bg-gray-200 text-gray-600 px-2 py-1 text-xs font-bold rounded-bl-lg">#${c.number}</div>
+                ${isScored ? '<div class="absolute top-0 left-0 bg-green-500 text-white px-2 py-1 text-xs font-bold rounded-br-lg"><i class="fas fa-check"></i> Scored</div>' : ''}
+                <div class="flex items-center gap-3">
+                    <div class="h-12 w-12 bg-gray-100 rounded-full flex items-center justify-center text-xl">
+                        ${c.gender === 'Male' ? '🤴' : '👸'}
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-gray-800 leading-tight">${c.name}</h3>
+                        ${isScored ? `<p class="text-xs font-bold text-green-600 mt-1">Total: ${scoreSum}</p>` : '<p class="text-xs text-red-400 mt-1">Not scored yet</p>'}
+                    </div>
+                </div>
+            </div>`;
+        }
+
+        // --- SCORING MODAL ---
+
+        function renderScoreModal() {
+            return `<div id="score-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-end md:items-center justify-center p-0 md:p-4">
+                <div class="bg-white w-full md:max-w-lg rounded-t-2xl md:rounded-2xl shadow-2xl h-[90vh] md:h-auto overflow-y-auto transform transition-transform duration-300 translate-y-full" id="modal-content"></div>
+            </div>`;
+        }
+
+        window.openScoringModal = function(candidateId) {
+            const candidate = appData.candidates.find(c => c.id === candidateId);
+            const currentRound = appData.config.currentRound;
+            const existingScore = appData.scores.find(s => s.round === currentRound && s.judge === currentUser.name && s.candidateId === candidateId);
+            const modal = document.getElementById('score-modal');
+            const content = document.getElementById('modal-content');
+            const scores = existingScore ? existingScore.scores : {};
+
+            modal.classList.remove('hidden');
+            setTimeout(() => content.classList.remove('translate-y-full'), 10);
+
+            const criteriaHtml = appData.criteria.map(crit => `
+                <div class="mb-4">
+                    <div class="flex justify-between mb-1">
+                        <label class="font-bold text-gray-700 text-sm">${crit.name}</label>
+                        <span class="text-sm font-bold text-blue-600"><span id="val-${crit.id}">${scores[crit.id] || 0}</span> / ${crit.max}</span>
+                    </div>
+                    <input type="range" id="input-${crit.id}" min="0" max="${crit.max}" value="${scores[crit.id] || 0}" 
+                        class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                        oninput="document.getElementById('val-${crit.id}').innerText = this.value; window.updateTotal();">
+                </div>
+            `).join('');
+
+            content.innerHTML = `
+                <div class="sticky top-0 bg-white p-4 border-b flex justify-between items-center z-10">
+                    <div><h3 class="font-bold text-lg">Score Candidate #${candidate.number}</h3></div>
+                    <button onclick="window.closeModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-xl"></i></button>
+                </div>
+                <div class="p-6">
+                    <form onsubmit="event.preventDefault(); window.saveScores(${candidate.id});">
+                        ${criteriaHtml}
+                        <div class="mt-6 bg-gray-100 p-4 rounded-lg flex justify-between items-center">
+                            <span class="font-bold text-gray-700">Total</span>
+                            <span class="text-2xl font-bold text-blue-900" id="grand-total">0</span>
+                        </div>
+                        <button type="submit" class="w-full mt-6 bg-blue-900 text-white font-bold py-3 rounded-lg shadow-lg">Submit Score</button>
+                    </form>
+                </div>
+            `;
+            window.updateTotal();
+        };
+
+        window.updateTotal = function() {
+            let total = 0;
+            appData.criteria.forEach(c => total += (parseInt(document.getElementById(`input-${c.id}`).value) || 0));
+            document.getElementById('grand-total').innerText = total;
+        };
+
+        window.closeModal = function() {
+            document.getElementById('modal-content').classList.add('translate-y-full');
+            setTimeout(() => document.getElementById('score-modal').classList.add('hidden'), 300);
+        };
+
+        window.saveScores = function(cId) {
+            const scores = {};
+            appData.criteria.forEach(c => scores[c.id] = document.getElementById(`input-${c.id}`).value);
+            
+            // Update Local Data First
+            appData.scores = appData.scores.filter(s => !(s.round === appData.config.currentRound && s.judge === currentUser.name && s.candidateId === cId));
+            appData.scores.push({
+                round: appData.config.currentRound,
+                judge: currentUser.name,
+                candidateId: cId,
+                scores: scores,
+                timestamp: new Date().toISOString()
+            });
+
+            // Sync to Firebase
+            window.saveData(appData);
+            window.closeModal();
+            // Re-render handled by snapshot listener, but for immediate UI feedback we can call it if needed
+        };
+
+
+        // --- TABULATOR VIEW ---
+
+        function renderTabulatorView(container) {
+            if(!window.tabulatorTab) window.tabulatorTab = 'results';
+            const currentRound = appData.config.currentRound;
+            let contentHtml = '';
+
+            if (window.tabulatorTab === 'results') {
+                const results = calculateResults(currentRound);
+                const maleResults = results.filter(r => r.candidate.gender === 'Male');
+                const femaleResults = results.filter(r => r.candidate.gender === 'Female');
+                
+                contentHtml = `
+                     <div class="bg-white rounded-xl shadow-lg overflow-hidden mb-8">
+                        <div class="p-4 bg-gray-50 border-b flex justify-between items-center">
+                            <h3 class="font-bold text-gray-700">🤴 Male Rankings</h3>
+                        </div>
+                        ${renderResultsTable(maleResults)}
+                    </div>
+                    <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+                        <div class="p-4 bg-gray-50 border-b flex justify-between items-center">
+                            <h3 class="font-bold text-gray-700">👸 Female Rankings</h3>
+                        </div>
+                        ${renderResultsTable(femaleResults)}
+                    </div>`;
+            } else if (window.tabulatorTab === 'settings') {
+                contentHtml = renderSettingsPanel();
+            }
+
+            container.innerHTML = `
+                <div class="flex flex-col min-h-screen">
+                    ${components.header("Tabulator Dashboard", "Control Center")}
+                    <div class="flex flex-col md:flex-row flex-grow overflow-hidden">
+                        <aside class="w-full md:w-64 bg-white shadow-lg p-4 z-10 flex-shrink-0 overflow-y-auto">
+                            <div class="mb-6">
+                                <h3 class="text-xs font-bold text-gray-400 uppercase mb-2">Navigation</h3>
+                                <button onclick="window.tabulatorTab='results'; window.renderTabulatorViewDirect()" class="w-full text-left px-4 py-2 mb-2 rounded font-bold transition ${window.tabulatorTab === 'results' ? 'bg-blue-100 text-blue-800' : 'hover:bg-gray-100'}"><i class="fas fa-list-ol mr-2"></i> Results</button>
+                                <button onclick="window.tabulatorTab='settings'; window.renderTabulatorViewDirect()" class="w-full text-left px-4 py-2 rounded font-bold transition ${window.tabulatorTab === 'settings' ? 'bg-blue-100 text-blue-800' : 'hover:bg-gray-100'}"><i class="fas fa-cog mr-2"></i> Settings & Data</button>
+                            </div>
+                            <div class="mb-6">
+                                <h3 class="text-xs font-bold text-gray-400 uppercase mb-2">Round Control</h3>
+                                <div class="bg-blue-50 p-3 rounded border border-blue-200 mb-2">
+                                    <span class="block text-xl font-bold text-blue-900 capitalize">${currentRound} Round</span>
+                                </div>
+                                ${currentRound === 'elimination' 
+                                    ? `<button onclick="window.advanceToFinals()" class="w-full text-left px-4 py-3 bg-yellow-500 hover:bg-yellow-600 text-white rounded font-bold transition shadow mb-2"><i class="fas fa-step-forward mr-2"></i> Next: Finals</button>`
+                                    : `<button onclick="window.resetSystem()" class="w-full text-left px-4 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded font-bold transition mb-2"><i class="fas fa-undo mr-2"></i> Restart</button>`
+                                }
+                            </div>
+                        </aside>
+                        <main class="flex-grow p-4 md:p-8 overflow-y-auto bg-gray-100">${contentHtml}</main>
+                    </div>
+                    ${components.footer()}
+                </div>`;
+        }
+        
+        // Expose to global scope for button clicks
+        window.renderTabulatorViewDirect = () => renderTabulatorView(document.getElementById('app'));
+
+        function renderResultsTable(results) {
+            if (results.length === 0) return '<div class="p-8 text-center text-gray-400">No data available</div>';
+            const judges = appData.judges;
+            return `
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm text-left">
+                    <thead class="text-xs text-gray-700 uppercase bg-gray-100">
+                        <tr>
+                            <th class="px-6 py-3">Rank</th>
+                            <th class="px-6 py-3">Candidate</th>
+                            ${judges.map(j => `<th class="px-6 py-3 text-center truncate max-w-[100px]" title="${j}">${j}</th>`).join('')}
+                            <th class="px-6 py-3 text-center bg-blue-50">Total</th>
+                            <th class="px-6 py-3 text-right bg-blue-100">Average</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${results.map((r, index) => `
+                            <tr class="bg-white border-b hover:bg-gray-50">
+                                <td class="px-6 py-4 font-bold text-gray-900">#${index + 1}</td>
+                                <td class="px-6 py-4">
+                                    <div class="font-medium text-gray-900">${r.candidate.name}</div>
+                                    <div class="text-xs text-gray-500">#${r.candidate.number}</div>
+                                </td>
+                                ${judges.map(j => `<td class="px-6 py-4 text-center ${r.rawScores[j] ? 'text-gray-800' : 'text-gray-300'}">${r.rawScores[j] || '-'}</td>`).join('')}
+                                <td class="px-6 py-4 text-center font-bold text-blue-800 bg-blue-50">${r.totalScore}</td>
+                                <td class="px-6 py-4 text-right font-bold text-blue-900 text-lg bg-blue-100">${r.average}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>`;
+        }
+
+        function renderSettingsPanel() {
+            return `
+                <div class="space-y-6">
+                     <!-- Danger Zone -->
+                    <div class="bg-red-50 border border-red-200 p-6 rounded-lg shadow">
+                        <h3 class="text-lg font-bold text-red-700 mb-2"><i class="fas fa-exclamation-triangle mr-2"></i> Danger Zone</h3>
+                        <p class="text-sm text-red-600 mb-4">This will permanently delete ALL scores and candidates from the database. There is no undo.</p>
+                        <button onclick="window.wipeAllData()" class="bg-red-600 text-white px-6 py-2 rounded font-bold hover:bg-red-700">Delete All Data</button>
+                    </div>
+
+                    <!-- Bulk CSV Upload -->
+                    <div class="bg-white p-6 rounded-lg shadow">
+                        <h3 class="text-lg font-bold text-blue-900 mb-4 border-b pb-2"><i class="fas fa-file-csv mr-2"></i> Bulk Candidate Upload</h3>
+                        <p class="text-sm text-gray-600 mb-3">Upload a CSV file with columns: <code>Number, Name, Gender</code></p>
+                        <input type="file" id="csv-upload" accept=".csv" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 mb-3"/>
+                        <button onclick="window.processCsvUpload()" class="bg-green-600 text-white px-4 py-2 rounded font-bold hover:bg-green-700">Process CSV</button>
+                    </div>
+
+                    <!-- Judges Management -->
+                    <div class="bg-white p-6 rounded-lg shadow">
+                        <h3 class="text-lg font-bold text-blue-900 mb-4 border-b pb-2"><i class="fas fa-users-cog mr-2"></i> Judges</h3>
+                        <div class="flex gap-2 mb-4">
+                             <input type="number" id="judge-count" min="1" max="20" value="${appData.judges.length}" class="p-2 border rounded w-20">
+                             <button onclick="window.generateJudgeInputs()" class="bg-blue-600 text-white px-4 py-2 rounded font-bold text-sm">Set Count</button>
+                        </div>
+                        <div id="judge-inputs" class="grid grid-cols-1 md:grid-cols-3 gap-2 mb-4">
+                            ${appData.judges.map((j, i) => `<input type="text" id="judge-name-${i}" value="${j}" class="p-2 border rounded" placeholder="Judge ${i+1}">`).join('')}
+                        </div>
+                        <button onclick="window.saveJudges()" class="w-full bg-green-600 text-white py-2 rounded font-bold">Save Judge List</button>
+                    </div>
+
+                    <!-- Branding -->
+                    <div class="bg-white p-6 rounded-lg shadow">
+                        <h3 class="text-lg font-bold text-blue-900 mb-4 border-b pb-2"><i class="fas fa-paint-brush mr-2"></i> Branding</h3>
+                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-bold mb-2">School Logo</label>
+                                <input type="file" accept="image/*" onchange="window.handleImageUpload(this, 'logo')" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // --- GLOBAL ACTIONS ---
+
+        window.generateJudgeInputs = function() {
+            const count = document.getElementById('judge-count').value;
+            const container = document.getElementById('judge-inputs');
+            let html = '';
+            for(let i=0; i<count; i++) {
+                const existingName = appData.judges[i] || `Judge ${i+1}`;
+                html += `<input type="text" id="judge-name-${i}" value="${existingName}" class="p-2 border rounded" placeholder="Judge Name">`;
+            }
+            container.innerHTML = html;
+        };
+
+        window.saveJudges = function() {
+            const count = document.getElementById('judge-inputs').children.length;
+            const newJudges = [];
+            for(let i=0; i<count; i++) {
+                const val = document.getElementById(`judge-name-${i}`).value;
+                if(val.trim()) newJudges.push(val.trim());
+            }
+            appData.judges = newJudges;
+            window.saveData(appData);
+            showToast("Judges updated!");
+        };
+
+        window.handleImageUpload = function(input, type) {
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    if (type === 'logo') appData.config.logoData = e.target.result;
+                    window.saveData(appData);
+                    showToast(`${type} updated!`);
+                };
+                reader.readAsDataURL(input.files[0]);
+            }
+        };
+
+        window.processCsvUpload = function() {
+            const fileInput = document.getElementById('csv-upload');
+            if (!fileInput.files.length) return showToast("Please select a file");
+            
+            const file = fileInput.files[0];
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                const text = e.target.result;
+                const lines = text.split('\n');
+                let added = 0;
+                
+                lines.forEach(line => {
+                    // Simple CSV Parse: Assume No Commas in Names for now
+                    const parts = line.split(',');
+                    if (parts.length >= 3) {
+                        const no = parseInt(parts[0].trim());
+                        const name = parts[1].trim();
+                        const genderStr = parts[2].trim().toLowerCase();
+                        
+                        if (no && name && (genderStr.includes('male') || genderStr.includes('female'))) {
+                            const gender = genderStr.includes('fe') ? 'Female' : 'Male';
+                            appData.candidates.push({
+                                id: Date.now() + Math.random(),
+                                number: no,
+                                name: name,
+                                gender: gender,
+                                active: true,
+                                isFinalist: false
+                            });
+                            added++;
+                        }
+                    }
+                });
+                
+                if (added > 0) {
+                    window.saveData(appData);
+                    showToast(`Imported ${added} candidates`);
+                    renderTabulatorViewDirect();
+                } else {
+                    showToast("No valid data found. Check format: Number,Name,Gender");
+                }
+            };
+            reader.readAsText(file);
+        };
+
+        window.wipeAllData = function() {
+            if(confirm("DANGER: Are you sure you want to delete ALL data? This cannot be undone.")) {
+                if(confirm("Double Check: You are about to wipe the database. Type YES to confirm.")) {
+                    window.saveData(DEFAULT_DATA);
+                    showToast("System Reset Complete.");
+                    setTimeout(() => window.location.reload(), 1000);
+                }
+            }
+        };
+
+        window.advanceToFinals = function() {
+            if (!confirm("Advance top 3 to Finals?")) return;
+            const results = calculateResults('elimination');
+            const males = results.filter(r => r.candidate.gender === 'Male').slice(0, 3);
+            const females = results.filter(r => r.candidate.gender === 'Female').slice(0, 3);
+            const finalistIds = [...males, ...females].map(r => r.candidate.id);
+
+            appData.candidates.forEach(c => c.isFinalist = finalistIds.includes(c.id));
+            appData.config.currentRound = 'final';
+            window.saveData(appData);
+            showToast("Final Round Started!");
+        };
+
+        window.resetSystem = function() {
+            if(confirm("Reset to Elimination Round? Scores will be kept but hidden.")) {
+                appData.config.currentRound = 'elimination';
+                window.saveData(appData);
+            }
+        };
+
+        // Initialize
+        initApp();
+    </script>
+</body>
+</html>
