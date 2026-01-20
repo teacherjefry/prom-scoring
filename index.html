@@ -108,8 +108,8 @@
             ],
             judges: ["Judge 1", "Judge 2", "Judge 3"],
             candidates: [
-                { id: 1, number: 1, name: "Marcus Aurelius", gender: "Male", active: true, isFinalist: false },
-                { id: 2, number: 2, name: "Cleopatra VII", gender: "Female", active: true, isFinalist: false }
+                { id: 1, number: 1, name: "Marcus Aurelius", nickname: "Marc", classroom: "Class X", gender: "Male", active: true, isFinalist: false },
+                { id: 2, number: 2, name: "Cleopatra VII", nickname: "Cleo", classroom: "Class XII", gender: "Female", active: true, isFinalist: false }
             ],
             scores: [] 
         };
@@ -164,8 +164,6 @@
                 db = getFirestore(app);
                 
                 // Auth Priority: Custom Token -> Anonymous
-                // We attempt Custom Token first (Canvas environment), but catch errors 
-                // to fallback to Anonymous (User's Firebase project)
                 try {
                     if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                         await signInWithCustomToken(auth, __initial_auth_token);
@@ -173,8 +171,7 @@
                         throw new Error("No environment token");
                     }
                 } catch (e) {
-                    // This is expected when using your own Firebase project key.
-                    // Fallback to anonymous auth.
+                    // Fallback to anonymous auth
                     await signInAnonymously(auth);
                 }
                 
@@ -436,19 +433,19 @@
             
             let contentHtml = '';
 
-            // ELIMINATION: All Mixed, Sorted by Number
+            // ELIMINATION: All Mixed, Sorted by Number, LINE-BY-LINE Layout
             if (currentRound === 'elimination') {
                 const sortedCandidates = candidates.sort((a, b) => a.number - b.number);
                 contentHtml = `
                     <div class="mb-8">
                         <h3 class="text-blue-900 font-bold mb-4 border-b pb-2">All Candidates (By Number)</h3>
-                        <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                        <div class="flex flex-col gap-4">
                             ${sortedCandidates.map(c => renderCandidateCard(c, getScore(c.id))).join('')}
                         </div>
                     </div>
                 `;
             } 
-            // FINAL: Split by Gender
+            // FINAL: Split by Gender (Keep grid for finals)
             else {
                 const males = candidates.filter(c => c.gender === 'Male');
                 const females = candidates.filter(c => c.gender === 'Female');
@@ -456,13 +453,13 @@
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div>
                             <h3 class="text-blue-900 font-bold mb-4 border-b pb-2">Prom Kings</h3>
-                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div class="grid grid-cols-1 gap-4">
                                 ${males.map(c => renderCandidateCard(c, getScore(c.id))).join('')}
                             </div>
                         </div>
                         <div>
                             <h3 class="text-pink-900 font-bold mb-4 border-b pb-2">Prom Queens</h3>
-                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div class="grid grid-cols-1 gap-4">
                                 ${females.map(c => renderCandidateCard(c, getScore(c.id))).join('')}
                             </div>
                         </div>
@@ -490,16 +487,26 @@
             const isScored = !!existingScore;
             const scoreSum = existingScore ? Object.values(existingScore.scores).reduce((a,b)=>a+parseInt(b),0) : 0;
             return `
-            <div onclick="window.openScoringModal(${c.id})" class="bg-white rounded-lg p-4 card-shadow hover:shadow-xl transition cursor-pointer border-l-4 ${c.gender === 'Male' ? 'border-blue-500' : 'border-pink-500'} relative overflow-hidden group">
+            <div onclick="window.openScoringModal(${c.id})" class="bg-white rounded-lg p-4 card-shadow hover:shadow-xl transition cursor-pointer border-l-4 ${c.gender === 'Male' ? 'border-blue-500' : 'border-pink-500'} relative overflow-hidden group w-full">
                 <div class="absolute top-0 right-0 bg-gray-200 text-gray-600 px-2 py-1 text-xs font-bold rounded-bl-lg">#${c.number}</div>
                 ${isScored ? '<div class="absolute top-0 left-0 bg-green-500 text-white px-2 py-1 text-xs font-bold rounded-br-lg"><i class="fas fa-check"></i> Scored</div>' : ''}
-                <div class="flex items-center gap-3">
-                    <div class="h-12 w-12 bg-gray-100 rounded-full flex items-center justify-center text-xl">
+                <div class="flex items-center gap-4">
+                    <div class="h-14 w-14 flex-shrink-0 bg-gray-100 rounded-full flex items-center justify-center text-2xl">
                         ${c.gender === 'Male' ? '🤴' : '👸'}
                     </div>
-                    <div>
-                        <h3 class="font-bold text-gray-800 leading-tight">${c.name}</h3>
-                        ${isScored ? `<p class="text-xs font-bold text-green-600 mt-1">Total: ${scoreSum}</p>` : '<p class="text-xs text-red-400 mt-1">Not scored yet</p>'}
+                    <div class="flex-grow">
+                        <div class="flex flex-col md:flex-row md:items-center md:justify-between">
+                            <div>
+                                <h3 class="font-bold text-gray-800 text-lg leading-tight">${c.name}</h3>
+                                <p class="text-xs text-gray-500 italic">${c.nickname ? `"${c.nickname}"` : ''} ${c.classroom ? ` • ${c.classroom}` : ''}</p>
+                            </div>
+                            <div class="mt-1 md:mt-0">
+                                ${isScored 
+                                    ? `<span class="inline-block bg-green-100 text-green-800 text-xs px-2 py-1 rounded font-bold">Total: ${scoreSum}</span>` 
+                                    : `<span class="inline-block bg-red-50 text-red-500 text-xs px-2 py-1 rounded">Not scored</span>`
+                                }
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>`;
@@ -538,7 +545,10 @@
 
             content.innerHTML = `
                 <div class="sticky top-0 bg-white p-4 border-b flex justify-between items-center z-10">
-                    <div><h3 class="font-bold text-lg">Score Candidate #${candidate.number}</h3></div>
+                    <div>
+                        <h3 class="font-bold text-lg">Score Candidate #${candidate.number}</h3>
+                        <p class="text-xs text-gray-500">${candidate.name}</p>
+                    </div>
                     <button onclick="window.closeModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-xl"></i></button>
                 </div>
                 <div class="p-6">
@@ -692,7 +702,10 @@
                     <!-- Bulk CSV Upload -->
                     <div class="bg-white p-6 rounded-lg shadow">
                         <h3 class="text-lg font-bold text-blue-900 mb-4 border-b pb-2"><i class="fas fa-file-csv mr-2"></i> Bulk Candidate Upload</h3>
-                        <p class="text-sm text-gray-600 mb-3">Upload a CSV file with columns: <code>Number, Name, Gender</code></p>
+                        <p class="text-sm text-gray-600 mb-2">Upload a CSV file with columns: <code>Number, Name, Nickname, Classroom, Gender</code></p>
+                        <div class="mb-3">
+                            <button onclick="window.downloadCsvTemplate()" class="text-blue-600 underline text-sm hover:text-blue-800"><i class="fas fa-download mr-1"></i> Download CSV Template</button>
+                        </div>
                         <input type="file" id="csv-upload" accept=".csv" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 mb-3"/>
                         <button onclick="window.processCsvUpload()" class="bg-green-600 text-white px-4 py-2 rounded font-bold hover:bg-green-700">Process CSV</button>
                     </div>
@@ -717,6 +730,11 @@
                             <div>
                                 <label class="block text-sm font-bold mb-2">School Logo</label>
                                 <input type="file" accept="image/*" onchange="window.handleImageUpload(this, 'logo')" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-bold mb-2">Favicon / App Icon</label>
+                                <input type="file" accept="image/*" onchange="window.handleImageUpload(this, 'favicon')" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
+                                <p class="text-xs text-gray-400 mt-1">Shows in browser tab & home screen.</p>
                             </div>
                         </div>
                     </div>
@@ -754,12 +772,27 @@
                 const reader = new FileReader();
                 reader.onload = function(e) {
                     if (type === 'logo') appData.config.logoData = e.target.result;
+                    if (type === 'favicon') {
+                        appData.config.faviconData = e.target.result;
+                        initBranding();
+                    }
                     window.saveData(appData);
                     showToast(`${type} updated!`);
                 };
                 reader.readAsDataURL(input.files[0]);
             }
         };
+
+        window.downloadCsvTemplate = function() {
+            const csvContent = "data:text/csv;charset=utf-8,Number,Name,Nickname,Classroom,Gender\n1,John Doe,Johnny,Class 10-A,Male\n2,Jane Smith,Janey,Class 10-B,Female";
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "candidates_template.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
 
         window.processCsvUpload = function() {
             const fileInput = document.getElementById('csv-upload');
@@ -774,9 +807,32 @@
                 let added = 0;
                 
                 lines.forEach(line => {
-                    // Simple CSV Parse: Assume No Commas in Names for now
                     const parts = line.split(',');
-                    if (parts.length >= 3) {
+                    // Format: Number, Name, Nickname, Classroom, Gender
+                    if (parts.length >= 5) {
+                        const no = parseInt(parts[0].trim());
+                        const name = parts[1].trim();
+                        const nickname = parts[2].trim();
+                        const classroom = parts[3].trim();
+                        const genderStr = parts[4].trim().toLowerCase();
+                        
+                        if (no && name && (genderStr.includes('male') || genderStr.includes('female'))) {
+                            const gender = genderStr.includes('fe') ? 'Female' : 'Male';
+                            appData.candidates.push({
+                                id: Date.now() + Math.random(),
+                                number: no,
+                                name: name,
+                                nickname: nickname,
+                                classroom: classroom,
+                                gender: gender,
+                                active: true,
+                                isFinalist: false
+                            });
+                            added++;
+                        }
+                    } 
+                    // Fallback for simple 3-column CSV: Number, Name, Gender
+                    else if (parts.length >= 3 && parts.length < 5) {
                         const no = parseInt(parts[0].trim());
                         const name = parts[1].trim();
                         const genderStr = parts[2].trim().toLowerCase();
@@ -801,7 +857,7 @@
                     showToast(`Imported ${added} candidates`);
                     renderTabulatorViewDirect();
                 } else {
-                    showToast("No valid data found. Check format: Number,Name,Gender");
+                    showToast("No valid data found. Use Template.");
                 }
             };
             reader.readAsText(file);
