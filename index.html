@@ -656,7 +656,7 @@
             `;
 
             return `
-            <div onclick="window.openScoringModal(${c.id})" class="${bgClass} rounded-2xl p-6 card-shadow hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 cursor-pointer border-l-8 ${borderClass} relative overflow-hidden group w-full pr-24">
+            <div onclick="window.openScoringModal('${c.id}')" class="${bgClass} rounded-2xl p-6 card-shadow hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 cursor-pointer border-l-8 ${borderClass} relative overflow-hidden group w-full pr-24">
                 ${numberBadge}
                 
                 ${isScored 
@@ -746,7 +746,7 @@
                     <button onclick="window.closeModal()" class="text-gray-500 hover:text-black bg-white rounded-full p-2 shadow-sm hover:shadow-md transition"><i class="fas fa-times text-2xl"></i></button>
                 </div>
                 <div class="p-6 md:p-8 bg-white">
-                    <form onsubmit="event.preventDefault(); window.saveScores(${candidate.id});">
+                    <form onsubmit="event.preventDefault(); window.saveScores('${candidate.id}');">
                         ${criteriaHtml}
                         <div class="mt-6 bg-gray-900 text-white p-6 rounded-2xl flex justify-between items-center shadow-lg transform hover:scale-[1.01] transition">
                             <div>
@@ -907,7 +907,11 @@
                                 <td class="px-6 py-4 font-black text-xl text-gray-400">#${index + 1}</td>
                                 <td class="px-6 py-4">
                                     <div class="font-bold text-gray-900 text-base">${r.candidate.name}</div>
-                                    <div class="text-xs text-gray-500 font-bold bg-gray-100 inline-block px-2 py-0.5 rounded mt-1">#${r.candidate.number}</div>
+                                    <div class="text-xs text-gray-500 mt-0.5">
+                                        <span class="font-bold bg-gray-100 px-2 py-0.5 rounded mr-1">#${r.candidate.number}</span>
+                                        <span class="italic">${r.candidate.nickname ? `"${r.candidate.nickname}"` : ''}</span>
+                                        <span class="ml-1">${r.candidate.classroom || ''}</span>
+                                    </div>
                                 </td>
                                 ${judges.map(j => `<td class="px-6 py-4 text-center border-l border-gray-100 ${r.rawScores[j] ? 'text-gray-800 font-bold' : 'text-gray-300 italic'}">${r.rawScores[j] || '-'}</td>`).join('')}
                                 <td class="px-6 py-4 text-center font-bold text-blue-800 bg-blue-50 border-l border-blue-100">${r.totalScore}</td>
