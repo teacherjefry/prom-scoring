@@ -209,15 +209,28 @@
             
             unsubscribeSnapshot = onSnapshot(docRef, (docSnap) => {
                 if (docSnap.exists()) {
-                    appData = docSnap.data();
+                    const newData = docSnap.data();
                     
                     // Safety checks
-                    if (!appData.candidates) appData.candidates = [];
-                    if (Array.isArray(appData.criteria)) {
-                        appData.criteria = DEFAULT_DATA.criteria; 
+                    if (!newData.candidates) newData.candidates = [];
+                    if (Array.isArray(newData.criteria)) {
+                        newData.criteria = DEFAULT_DATA.criteria; 
                     }
+
+                    // --- INTELLIGENT REFRESH GUARD ---
+                    // Prevent full app re-render if user is an active judge with the modal open
+                    const isJudge = currentUser && currentUser.role === 'judge';
+                    const isModalOpen = !document.getElementById('score-modal')?.classList.contains('hidden');
                     
+                    // Always update data, but conditionally render
+                    appData = newData;
                     fixDuplicateIds();
+                    
+                    if (isJudge && isModalOpen) {
+                        console.log("Data updated in background. Skipping UI refresh to prevent interruption.");
+                        return; // EXIT HERE: Do not re-render UI
+                    }
+
                     initBranding();
                     renderApp(); 
                 } else {
@@ -773,8 +786,11 @@
 
         window.closeModal = function() {
             document.getElementById('modal-content').classList.add('translate-y-full');
-            setTimeout(() => document.getElementById('score-modal').classList.add('hidden'), 300);
-        };
+            setTimeout(() => {
+                document.getElementById('score-modal').classList.add('hidden');
+                renderApp(); // Force re-render to update the list view (green tags)
+            }, 300);
+        }
 
         window.saveScores = function(cId) {
             const scores = {};
