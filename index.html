@@ -923,6 +923,42 @@
             </div>`;
         }
 
+        window.showWinners = function() {
+            const results = calculateResults('final').filter(r => r.candidate.isFinalist);
+            const males = results.filter(r => r.candidate.gender === 'Male');
+            const females = results.filter(r => r.candidate.gender === 'Female');
+
+            // Helper to render winner card
+            const winnerCard = (title, r, colorClass, icon) => {
+                if (!r) return '';
+                return `
+                    <div class="bg-white rounded-lg shadow-lg overflow-hidden border-t-8 ${colorClass} text-center p-6 transform hover:scale-105 transition duration-300">
+                        <div class="text-6xl mb-4">${icon}</div>
+                        <h3 class="text-xl font-bold uppercase tracking-widest text-gray-500 mb-2">${title}</h3>
+                        <h2 class="text-3xl font-bold text-gray-900 mb-1 serif">${r.candidate.name}</h2>
+                        <p class="text-gray-500 mb-4">${r.candidate.classroom || ''}</p>
+                        <div class="inline-block bg-gray-100 px-4 py-2 rounded-full text-sm font-bold text-gray-700">
+                            Score: ${r.average}
+                        </div>
+                    </div>
+                `;
+            };
+
+            const html = `
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
+                    ${winnerCard("Prom King", males[0], "border-blue-600", "🤴")}
+                    ${winnerCard("Prom Queen", females[0], "border-pink-600", "👸")}
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+                    ${winnerCard("Prom Prince", males[1], "border-blue-400", "🤵")}
+                    ${winnerCard("Prom Princess", females[1], "border-pink-400", "👰")}
+                </div>
+            `;
+
+            document.getElementById('winners-content').innerHTML = html;
+            document.getElementById('winners-modal').classList.remove('hidden');
+        };
+
         function renderSettingsPanel() {
             return `
                 <div class="space-y-8 max-w-4xl mx-auto">
