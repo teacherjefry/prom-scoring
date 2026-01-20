@@ -102,10 +102,7 @@
                 faviconData: null
             },
             criteria: [
-                { id: 'poise', name: 'Poise & Bearing', weight: 25, max: 25 },
-                { id: 'stage', name: 'Stage Presence', weight: 25, max: 25 },
-                { id: 'appear', name: 'Overall Appearance', weight: 25, max: 25 },
-                { id: 'impact', name: 'Audience Impact', weight: 25, max: 25 }
+                { id: 'total', name: 'Total Score', description: 'Poise & Bearing, Stage Presence, Overall Appearance, Audience Impact', max: 100 }
             ],
             judges: ["Judge 1", "Judge 2", "Judge 3"],
             candidates: [
@@ -533,14 +530,21 @@
             setTimeout(() => content.classList.remove('translate-y-full'), 10);
 
             const criteriaHtml = appData.criteria.map(crit => `
-                <div class="mb-4">
-                    <div class="flex justify-between mb-1">
-                        <label class="font-bold text-gray-700 text-sm">${crit.name}</label>
-                        <span class="text-sm font-bold text-blue-600"><span id="val-${crit.id}">${scores[crit.id] || 0}</span> / ${crit.max}</span>
+                <div class="mb-6">
+                    <div class="flex justify-between items-end mb-2">
+                        <div>
+                            <label class="font-bold text-gray-800 text-lg block">${crit.name}</label>
+                            ${crit.description ? `<p class="text-xs text-gray-500 font-normal">${crit.description}</p>` : ''}
+                        </div>
+                        <span class="text-2xl font-bold text-blue-900"><span id="val-${crit.id}">${scores[crit.id] || 0}</span><span class="text-sm text-gray-400 font-normal"> / ${crit.max}</span></span>
                     </div>
-                    <input type="range" id="input-${crit.id}" min="0" max="${crit.max}" value="${scores[crit.id] || 0}" 
-                        class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                    <input type="range" id="input-${crit.id}" min="1" max="${crit.max}" value="${scores[crit.id] || 0}" 
+                        class="w-full h-4 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600 transition-all hover:bg-gray-300"
                         oninput="document.getElementById('val-${crit.id}').innerText = this.value; window.updateTotal();">
+                    <div class="flex justify-between text-xs text-gray-400 mt-1">
+                        <span>1</span>
+                        <span>${crit.max}</span>
+                    </div>
                 </div>
             `).join('');
 
