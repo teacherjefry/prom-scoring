@@ -73,6 +73,20 @@
         </div>
     </div>
 
+    <!-- Quota Exceeded / Critical Error Modal -->
+    <div id="error-modal" class="fixed inset-0 bg-black bg-opacity-90 hidden z-[70] flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl p-8 max-w-md w-full shadow-2xl text-center border-t-8 border-red-600">
+            <div class="mb-4">
+                <div class="mx-auto h-16 w-16 bg-red-100 rounded-full flex items-center justify-center">
+                    <i class="fas fa-exclamation-triangle text-3xl text-red-600"></i>
+                </div>
+            </div>
+            <h2 class="text-2xl font-bold text-gray-900 mb-2">System Limit Reached</h2>
+            <p class="text-gray-600 mb-6" id="error-modal-msg">The daily database quota has been exceeded. Operations are paused until the quota resets (usually daily at midnight Pacific Time).</p>
+            <button onclick="window.location.reload()" class="bg-gray-800 text-white px-6 py-2 rounded-lg font-bold hover:bg-gray-700 transition">Try Refreshing</button>
+        </div>
+    </div>
+
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getFirestore, doc, onSnapshot, setDoc, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
@@ -105,10 +119,7 @@
                 { id: 'total', name: 'Total Score', description: 'Poise & Bearing, Stage Presence, Overall Appearance, Audience Impact', max: 100 }
             ],
             judges: ["Judge 1", "Judge 2", "Judge 3"],
-            candidates: [
-                { id: 1, number: 1, name: "Marcus Aurelius", nickname: "Marc", classroom: "Class X", gender: "Male", active: true, isFinalist: false },
-                { id: 2, number: 2, name: "Cleopatra VII", nickname: "Cleo", classroom: "Class XII", gender: "Female", active: true, isFinalist: false }
-            ],
+            candidates: [], // Empty by default
             scores: [] 
         };
 
@@ -177,16 +188,7 @@
                 setupRealtimeListener();
                 
             } catch (error) {
-                console.error("Firebase Error:", error);
-                
-                let msg = "Database Connection Failed.";
-                if (error.code === 'auth/operation-not-allowed') {
-                    msg = "Error: Anonymous Auth not enabled in Firebase Console.";
-                } else if (error.code === 'permission-denied') {
-                    msg = "Error: Missing Permissions. Check Firestore Rules.";
-                }
-                
-                showToast(msg);
+                handleFirebaseError(error);
                 renderLanding(document.getElementById('app'));
             }
         }
@@ -208,12 +210,7 @@
                     renderApp();
                 }
             }, (error) => {
-                console.error("Sync Error:", error);
-                if (error.code === 'permission-denied') {
-                    showToast("Sync Error: Permission Denied. Is Firestore in Test Mode?");
-                } else {
-                    showToast("Sync Error: " + error.message);
-                }
+                handleFirebaseError(error);
             });
         }
 
@@ -226,10 +223,34 @@
                 const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'scoring_system', 'state');
                 await setDoc(docRef, newData);
             } catch (e) {
-                console.error(e);
-                showToast("Error saving to database: " + e.message);
+                handleFirebaseError(e);
             }
         };
+
+        // --- ERROR HANDLING ---
+
+        function handleFirebaseError(error) {
+            console.error("Firebase Error:", error);
+            
+            let isCritical = false;
+            let msg = error.message;
+
+            // Check for Resource Exhausted (Quota)
+            if (error.code === 'resource-exhausted' || (msg && msg.toLowerCase().includes('quota'))) {
+                isCritical = true;
+                msg = "Daily database quota exceeded. Please try again tomorrow or upgrade the plan.";
+            } 
+            else if (error.code === 'permission-denied') {
+                msg = "Permission Denied. Check Firestore Rules (Test Mode enabled?).";
+            }
+
+            if (isCritical) {
+                document.getElementById('error-modal-msg').innerText = msg;
+                document.getElementById('error-modal').classList.remove('hidden');
+            } else {
+                showToast("Error: " + msg);
+            }
+        }
 
         // --- HELPER FUNCTIONS ---
 
@@ -429,6 +450,20 @@
             const candidates = getCandidatesForRound();
             const getScore = (cId) => appData.scores.find(s => s.round === currentRound && s.judge === currentUser.name && s.candidateId === cId);
             
+            // Calculate Stats
+            const maleCount = candidates.filter(c => c.gender === 'Male').length;
+            const femaleCount = candidates.filter(c => c.gender === 'Female').length;
+            const totalCount = candidates.length;
+
+            const summaryHtml = `
+                <div class="bg-white p-3 rounded-lg shadow-sm border border-blue-100 mb-4 flex flex-wrap gap-4 text-sm items-center justify-center">
+                    <span class="font-bold text-gray-700 uppercase tracking-wide">Count:</span>
+                    <span class="text-blue-800 font-semibold"><i class="fas fa-users mr-1"></i> Total: ${totalCount}</span>
+                    <span class="text-blue-600 font-semibold"><i class="fas fa-male mr-1"></i> Male: ${maleCount}</span>
+                    <span class="text-pink-600 font-semibold"><i class="fas fa-female mr-1"></i> Female: ${femaleCount}</span>
+                </div>
+            `;
+
             let contentHtml = '';
 
             // ELIMINATION: All Mixed, Sorted by Number, LINE-BY-LINE Layout
@@ -469,10 +504,13 @@
                 <div class="flex flex-col min-h-screen">
                     ${components.header(appData.config.eventName, `${currentRound.toUpperCase()} ROUND`)}
                     <main class="flex-grow p-4 md:p-8 max-w-6xl mx-auto w-full pb-20">
-                        <div class="flex justify-between items-center mb-6">
+                        <div class="flex justify-between items-center mb-4">
                             <h2 class="text-xl font-bold text-gray-800">Judge Sheet</h2>
                             <span class="text-sm bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full font-bold uppercase tracking-wider">${currentRound} Round</span>
                         </div>
+                        
+                        ${summaryHtml}
+
                         ${contentHtml}
                     </main>
                     ${components.footer()}
