@@ -79,15 +79,15 @@
         import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
         // --- PASTE FIREBASE CONFIG HERE FOR GITHUB HOSTING ---
-        // Replace 'null' with your config object e.g. { apiKey: "...", ... }
-        const firebaseConfig = {
-  apiKey: "AIzaSyCQSj2qKMhhyFFexp_sm4vnUCNgeEtH1p4",
-  authDomain: "neerada-prom.firebaseapp.com",
-  projectId: "neerada-prom",
-  storageBucket: "neerada-prom.firebasestorage.app",
-  messagingSenderId: "716982986904",
-  appId: "1:716982986904:web:b569d64a7dfd34f02ec8ed"
-};
+        // Config provided by user for neerada-prom project
+        const HARDCODED_FIREBASE_CONFIG = {
+            apiKey: "AIzaSyCQSj2qKMhhyFFexp_sm4vnUCNgeEtH1p4",
+            authDomain: "neerada-prom.firebaseapp.com",
+            projectId: "neerada-prom",
+            storageBucket: "neerada-prom.firebasestorage.app",
+            messagingSenderId: "716982986904",
+            appId: "1:716982986904:web:b569d64a7dfd34f02ec8ed"
+        };
 
         /**
          * DEFAULT DATA & STRUCTURE
@@ -164,9 +164,17 @@
                 db = getFirestore(app);
                 
                 // Auth Priority: Custom Token -> Anonymous
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
+                // We attempt Custom Token first (Canvas environment), but catch errors 
+                // to fallback to Anonymous (User's Firebase project)
+                try {
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        throw new Error("No environment token");
+                    }
+                } catch (e) {
+                    // This is expected when using your own Firebase project key.
+                    // Fallback to anonymous auth.
                     await signInAnonymously(auth);
                 }
                 
