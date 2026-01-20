@@ -11,7 +11,7 @@
     <link id="apple-touch-icon" rel="apple-touch-icon" href="data:image/png;base64,">
 
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Lato:wght@300;400;700&family=Noto+Sans+Lao:wght@400;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Lato:wght@300;400;700;900&family=Noto+Sans+Lao:wght@400;700&display=swap');
 
         :root {
             --primary: #1e3a8a; /* Navy Blue */
@@ -49,9 +49,9 @@
 
     <!-- Notification Toast -->
     <div id="toast" class="fixed top-5 right-5 z-50 transform translate-x-full transition-transform duration-300">
-        <div class="bg-blue-900 text-white px-6 py-4 rounded shadow-lg border-l-4 border-yellow-400 flex items-center">
-            <i class="fas fa-info-circle mr-3 text-yellow-400"></i>
-            <span id="toast-message">Notification</span>
+        <div class="bg-blue-900 text-white px-6 py-4 rounded shadow-lg border-l-4 border-yellow-400 flex items-center text-lg">
+            <i class="fas fa-info-circle mr-3 text-yellow-400 text-2xl"></i>
+            <span id="toast-message" class="font-bold">Notification</span>
         </div>
     </div>
 
@@ -77,22 +77,22 @@
     <div id="error-modal" class="fixed inset-0 bg-black bg-opacity-90 hidden z-[70] flex items-center justify-center p-4">
         <div class="bg-white rounded-xl p-8 max-w-md w-full shadow-2xl text-center border-t-8 border-red-600">
             <div class="mb-4">
-                <div class="mx-auto h-16 w-16 bg-red-100 rounded-full flex items-center justify-center">
-                    <i class="fas fa-exclamation-triangle text-3xl text-red-600"></i>
+                <div class="mx-auto h-20 w-20 bg-red-100 rounded-full flex items-center justify-center">
+                    <i class="fas fa-exclamation-triangle text-4xl text-red-600"></i>
                 </div>
             </div>
-            <h2 class="text-2xl font-bold text-gray-900 mb-2">System Limit Reached</h2>
-            <p class="text-gray-600 mb-6" id="error-modal-msg">The daily database quota has been exceeded. Operations are paused until the quota resets (usually daily at midnight Pacific Time).</p>
-            <button onclick="window.location.reload()" class="bg-gray-800 text-white px-6 py-2 rounded-lg font-bold hover:bg-gray-700 transition">Try Refreshing</button>
+            <h2 class="text-3xl font-bold text-gray-900 mb-2">System Limit Reached</h2>
+            <p class="text-gray-600 mb-6 text-lg" id="error-modal-msg">The daily database quota has been exceeded. Operations are paused until the quota resets (usually daily at midnight Pacific Time).</p>
+            <button onclick="window.location.reload()" class="bg-gray-800 text-white px-8 py-3 rounded-lg font-bold text-lg hover:bg-gray-700 transition">Try Refreshing</button>
         </div>
     </div>
 
     <!-- Winners Modal -->
     <div id="winners-modal" class="fixed inset-0 bg-black bg-opacity-90 hidden z-[80] flex items-center justify-center p-4">
-        <div class="bg-white rounded-xl max-w-4xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div class="bg-yellow-500 p-4 flex justify-between items-center text-blue-900">
-                <h2 class="text-2xl font-bold serif"><i class="fas fa-crown mr-2"></i> Official Results</h2>
-                <button onclick="document.getElementById('winners-modal').classList.add('hidden')" class="hover:text-white"><i class="fas fa-times text-2xl"></i></button>
+        <div class="bg-white rounded-xl max-w-5xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[95vh]">
+            <div class="bg-yellow-500 p-6 flex justify-between items-center text-blue-900">
+                <h2 class="text-4xl font-bold serif"><i class="fas fa-crown mr-3"></i> Official Results</h2>
+                <button onclick="document.getElementById('winners-modal').classList.add('hidden')" class="hover:text-white"><i class="fas fa-times text-4xl"></i></button>
             </div>
             <div id="winners-content" class="p-8 overflow-y-auto bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-blue-50">
                 <!-- Winners injected here -->
@@ -142,7 +142,7 @@
                 ]
             },
             judges: ["Judge 1", "Judge 2", "Judge 3"],
-            candidates: [], 
+            candidates: [], // Cleared default candidates
             scores: [] 
         };
 
@@ -210,10 +210,14 @@
             unsubscribeSnapshot = onSnapshot(docRef, (docSnap) => {
                 if (docSnap.exists()) {
                     appData = docSnap.data();
-                    // Migration check for old criteria structure
+                    
+                    // Safety checks
+                    if (!appData.candidates) appData.candidates = [];
                     if (Array.isArray(appData.criteria)) {
-                        appData.criteria = DEFAULT_DATA.criteria; // Auto-migrate structure
+                        appData.criteria = DEFAULT_DATA.criteria; 
                     }
+                    
+                    fixDuplicateIds();
                     initBranding();
                     renderApp(); 
                 } else {
@@ -224,6 +228,36 @@
             }, (error) => {
                 handleFirebaseError(error);
             });
+        }
+
+        // --- DATA INTEGRITY FIX (Solves 103 vs 105 count discrepancy) ---
+        function fixDuplicateIds() {
+            const seen = new Set();
+            let fixed = false;
+            
+            appData.candidates.forEach((c, index) => {
+                // Ensure ID exists
+                if (!c.id) {
+                    c.id = 'gen-' + Date.now() + '-' + index;
+                    fixed = true;
+                }
+                
+                // Convert to string to catch "1" vs 1 duplication
+                const strId = String(c.id);
+                
+                if (seen.has(strId)) {
+                    // Collision found: Generate new robust unique ID
+                    console.warn("Duplicate ID found and fixed:", strId);
+                    c.id = Date.now() + '-' + index + '-' + Math.random().toString(36).substr(2, 9);
+                    fixed = true;
+                }
+                seen.add(String(c.id));
+            });
+
+            if (fixed) {
+                console.log("System Auto-Repair: Fixed duplicate candidate IDs.");
+                window.saveData(appData);
+            }
         }
 
         window.saveData = async function(newData) {
@@ -244,9 +278,9 @@
 
             if (error.code === 'resource-exhausted' || (msg && msg.toLowerCase().includes('quota'))) {
                 isCritical = true;
-                msg = "Daily database quota exceeded. Please try again tomorrow or upgrade the plan.";
+                msg = "Daily database quota exceeded. Please try again tomorrow.";
             } else if (error.code === 'permission-denied') {
-                msg = "Permission Denied. Check Firestore Rules (Test Mode enabled?).";
+                msg = "Permission Denied. Check Firestore Rules.";
             }
 
             if (isCritical) {
@@ -337,25 +371,25 @@
         // --- VIEWS ---
 
         const components = {
-            footer: () => `<footer class="bg-blue-900 text-blue-200 py-4 text-center text-xs mt-auto border-t-4 border-yellow-500"><p>&copy; ${new Date().getFullYear()} Neerada School. All Rights Reserved.</p></footer>`,
+            footer: () => `<footer class="bg-blue-900 text-blue-200 py-6 text-center text-sm md:text-base mt-auto border-t-8 border-yellow-500 font-bold"><p>&copy; ${new Date().getFullYear()} Neerada School. All Rights Reserved.</p></footer>`,
             header: (title, subtitle) => {
                 const logoHtml = appData.config.logoData 
-                    ? `<img src="${appData.config.logoData}" class="h-12 w-12 md:h-16 md:w-16 rounded-full border-2 border-yellow-400 object-cover bg-white mr-4">` 
-                    : `<div class="h-12 w-12 md:h-16 md:w-16 rounded-full border-2 border-yellow-400 flex items-center justify-center bg-blue-800 text-yellow-400 mr-4"><i class="fas fa-university text-xl"></i></div>`;
+                    ? `<img src="${appData.config.logoData}" class="h-16 w-16 md:h-20 md:w-20 rounded-full border-4 border-yellow-400 object-cover bg-white mr-4 shadow-lg">` 
+                    : `<div class="h-16 w-16 md:h-20 md:w-20 rounded-full border-4 border-yellow-400 flex items-center justify-center bg-blue-800 text-yellow-400 mr-4 shadow-lg"><i class="fas fa-university text-3xl"></i></div>`;
 
                 return `
-                <header class="bg-blue-900 text-white p-4 shadow-lg border-b-4 border-yellow-500 flex-shrink-0">
-                    <div class="container mx-auto flex justify-between items-center">
+                <header class="bg-blue-900 text-white p-4 md:p-6 shadow-xl border-b-8 border-yellow-500 flex-shrink-0">
+                    <div class="container mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
                         <div class="flex items-center">
                             ${logoHtml}
                             <div>
-                                <h1 class="text-xl md:text-2xl font-bold serif text-yellow-400">${appData.config.schoolName}</h1>
-                                <p class="text-xs md:text-sm text-blue-200 uppercase tracking-widest">${subtitle}</p>
+                                <h1 class="text-2xl md:text-4xl font-bold serif text-yellow-400 tracking-wide">${appData.config.schoolName}</h1>
+                                <p class="text-sm md:text-lg text-blue-200 uppercase tracking-widest font-bold">${subtitle}</p>
                             </div>
                         </div>
-                        <div class="flex items-center gap-3">
-                            ${currentUser ? `<span class="bg-blue-800 px-3 py-1 rounded text-sm hidden md:inline-block"><i class="fas fa-user mr-2"></i>${currentUser.name}</span>` : ''}
-                            <button onclick="logout()" class="text-gray-300 hover:text-white transition" title="Logout"><i class="fas fa-sign-out-alt"></i></button>
+                        <div class="flex items-center gap-4">
+                            ${currentUser ? `<span class="bg-blue-800 px-4 py-2 rounded-full text-base md:text-lg font-bold shadow-inner border border-blue-700"><i class="fas fa-user mr-2"></i>${currentUser.name}</span>` : ''}
+                            <button onclick="logout()" class="text-gray-300 hover:text-white transition transform hover:scale-110" title="Logout"><i class="fas fa-sign-out-alt text-2xl md:text-3xl"></i></button>
                         </div>
                     </div>
                 </header>`;
@@ -368,45 +402,44 @@
                 <div class="min-h-screen flex flex-col justify-between bg-blue-900 relative overflow-hidden">
                     <div class="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
                     <div class="flex-grow flex items-center justify-center p-4">
-                        <div class="bg-white p-8 rounded-xl shadow-2xl max-w-md w-full z-10 animate-fade-in relative">
+                        <div class="bg-white p-8 md:p-12 rounded-2xl shadow-2xl max-w-lg w-full z-10 animate-fade-in relative border-4 border-yellow-500">
                             ${!isConfigured ? `<div class="absolute top-0 right-0 p-2"><button onclick="showConfigModal()" class="text-xs text-blue-500 underline">Configure Database</button></div>` : ''}
                             
-                            <div class="text-center mb-8">
+                            <div class="text-center mb-10">
                                 ${appData.config.logoData 
-                                    ? `<img src="${appData.config.logoData}" class="h-24 w-24 mx-auto mb-4 rounded-full border-4 border-yellow-500 object-cover">` 
-                                    : `<i class="fas fa-crown text-5xl text-yellow-500 mb-4"></i>`
+                                    ? `<img src="${appData.config.logoData}" class="h-32 w-32 mx-auto mb-6 rounded-full border-4 border-yellow-500 object-cover shadow-xl">` 
+                                    : `<i class="fas fa-crown text-6xl text-yellow-500 mb-6 drop-shadow-md"></i>`
                                 }
-                                <h1 class="text-2xl font-bold text-blue-900 serif">${appData.config.schoolName}</h1>
-                                <p class="text-gray-500 font-bold">${appData.config.eventName}</p>
+                                <h1 class="text-3xl md:text-4xl font-bold text-blue-900 serif mb-2">${appData.config.schoolName}</h1>
+                                <p class="text-gray-600 font-bold text-lg uppercase tracking-wide">${appData.config.eventName}</p>
                             </div>
 
                             ${!isConfigured 
                                 ? `<div class="text-center text-red-500 p-4 border border-red-200 rounded bg-red-50">Database not connected.<br>Please click Configure in top right.</div>` 
-                                : `<div class="space-y-4">
-                                    <h3 class="text-sm font-bold text-gray-400 uppercase tracking-wide">Enter as</h3>
-                                    <div class="border rounded-lg p-4 hover:border-blue-500 cursor-pointer transition bg-gray-50 group" onclick="document.getElementById('judge-select').classList.remove('hidden')">
+                                : `<div class="space-y-6">
+                                    <div class="border-2 border-blue-100 rounded-xl p-6 hover:border-blue-500 cursor-pointer transition bg-blue-50 group shadow-md" onclick="document.getElementById('judge-select').classList.remove('hidden')">
                                         <div class="flex items-center">
-                                            <div class="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition"><i class="fas fa-gavel"></i></div>
-                                            <div class="ml-4"><h4 class="font-bold text-gray-800">Judge</h4><p class="text-xs text-gray-500">Score candidates</p></div>
-                                            <i class="fas fa-chevron-right ml-auto text-gray-300"></i>
+                                            <div class="w-14 h-14 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-lg group-hover:scale-110 transition"><i class="fas fa-gavel text-2xl"></i></div>
+                                            <div class="ml-6"><h4 class="font-bold text-xl text-blue-900">Judge</h4><p class="text-sm text-blue-600 font-bold">Score candidates</p></div>
+                                            <i class="fas fa-chevron-right ml-auto text-blue-300 text-xl"></i>
                                         </div>
                                     </div>
-                                    <div class="border rounded-lg p-4 hover:border-yellow-500 cursor-pointer transition bg-gray-50 group" onclick="login('tabulator', 'Admin')">
+                                    <div class="border-2 border-yellow-100 rounded-xl p-6 hover:border-yellow-500 cursor-pointer transition bg-yellow-50 group shadow-md" onclick="login('tabulator', 'Admin')">
                                         <div class="flex items-center">
-                                            <div class="w-10 h-10 rounded-full bg-yellow-100 text-yellow-600 flex items-center justify-center group-hover:bg-yellow-500 group-hover:text-white transition"><i class="fas fa-calculator"></i></div>
-                                            <div class="ml-4"><h4 class="font-bold text-gray-800">Tabulator</h4><p class="text-xs text-gray-500">Manage rounds & results</p></div>
-                                            <i class="fas fa-chevron-right ml-auto text-gray-300"></i>
+                                            <div class="w-14 h-14 rounded-full bg-yellow-500 text-white flex items-center justify-center shadow-lg group-hover:scale-110 transition"><i class="fas fa-calculator text-2xl"></i></div>
+                                            <div class="ml-6"><h4 class="font-bold text-xl text-yellow-900">Tabulator</h4><p class="text-sm text-yellow-700 font-bold">Manage rounds & results</p></div>
+                                            <i class="fas fa-chevron-right ml-auto text-yellow-300 text-xl"></i>
                                         </div>
                                     </div>
                                 </div>`
                             }
                             
-                            <div id="judge-select" class="hidden mt-6 pt-4 border-t">
-                                <label class="block text-sm font-bold mb-2">Select Your Name</label>
-                                <select id="judge-name-input" class="w-full p-2 border rounded mb-3">
+                            <div id="judge-select" class="hidden mt-8 pt-6 border-t-2 border-gray-100 animate-fade-in">
+                                <label class="block text-lg font-bold mb-3 text-gray-700">Select Your Name</label>
+                                <select id="judge-name-input" class="w-full p-4 border-2 border-gray-300 rounded-lg mb-4 text-lg font-bold text-gray-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition">
                                     ${appData.judges.map(j => `<option value="${j}">${j}</option>`).join('')}
                                 </select>
-                                <button onclick="loginJudge()" class="w-full bg-blue-900 text-white py-2 rounded font-bold hover:bg-blue-800">Start Scoring</button>
+                                <button onclick="loginJudge()" class="w-full bg-gradient-to-r from-blue-700 to-blue-900 text-white py-4 rounded-lg font-bold text-xl hover:shadow-xl transform hover:-translate-y-1 transition">Start Scoring</button>
                             </div>
                         </div>
                     </div>
@@ -426,9 +459,7 @@
 
         function getCriteriaForRound() {
             const round = appData.config.currentRound;
-            // Handle legacy structure where criteria was array
             if (Array.isArray(appData.criteria)) return appData.criteria;
-            
             return appData.criteria[round] || appData.criteria['elimination'];
         }
 
@@ -449,6 +480,8 @@
                 }
             });
 
+            const totalJudges = appData.judges.length; 
+
             Object.keys(results).forEach(id => {
                 if (results[id].judgeCounts > 0) {
                     results[id].average = (results[id].totalScore / results[id].judgeCounts).toFixed(2);
@@ -460,6 +493,77 @@
             return Object.values(results).sort((a, b) => b.average - a.average);
         }
 
+        // --- CSV EXPORT LOGIC ---
+
+        window.exportJudgeScores = function(judgeName) {
+            const round = appData.config.currentRound;
+            const relevantScores = appData.scores.filter(s => s.round === round && s.judge === judgeName);
+            const criteria = getCriteriaForRound();
+            
+            let csv = "Candidate No,Candidate Name,Gender," + criteria.map(c => c.name).join(",") + ",Total Score\n";
+            
+            appData.candidates.forEach(c => {
+                const scoreEntry = relevantScores.find(s => s.candidateId === c.id);
+                if (scoreEntry) {
+                    let row = `${c.number},"${c.name}",${c.gender}`;
+                    let total = 0;
+                    criteria.forEach(crit => {
+                        const val = scoreEntry.scores[crit.id] || 0;
+                        row += `,${val}`;
+                        total += parseFloat(val);
+                    });
+                    row += `,${total}\n`;
+                    csv += row;
+                }
+            });
+
+            downloadCSV(csv, `${judgeName}_${round}_Scores.csv`);
+        };
+
+        window.exportAllScores = function() {
+            const round = appData.config.currentRound;
+            const criteria = getCriteriaForRound();
+            const judges = appData.judges;
+            
+            let csv = "Number,Name,Gender";
+            judges.forEach(j => {
+                criteria.forEach(c => csv += `,${j}-${c.name}`);
+                csv += `,${j}-Total`;
+            });
+            csv += ",Grand Average\n";
+
+            const results = calculateResults(round);
+            
+            results.forEach(r => {
+                let row = `${r.candidate.number},"${r.candidate.name}",${r.candidate.gender}`;
+                
+                judges.forEach(j => {
+                    const s = appData.scores.find(x => x.round === round && x.judge === j && x.candidateId === r.candidate.id);
+                    let jTotal = 0;
+                    criteria.forEach(c => {
+                        const val = s ? (s.scores[c.id] || 0) : 0;
+                        row += `,${val}`;
+                        jTotal += parseFloat(val);
+                    });
+                    row += `,${jTotal}`;
+                });
+                
+                row += `,${r.average}\n`;
+                csv += row;
+            });
+
+            downloadCSV(csv, `All_Scores_Summary_${round}.csv`);
+        };
+
+        function downloadCSV(content, filename) {
+            const blob = new Blob([content], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+        }
+
         // --- JUDGE VIEW RENDER ---
 
         function renderJudgeView(container) {
@@ -467,49 +571,46 @@
             const candidates = getCandidatesForRound();
             const getScore = (cId) => appData.scores.find(s => s.round === currentRound && s.judge === currentUser.name && s.candidateId === cId);
             
-            // Calculate Stats
             const maleCount = candidates.filter(c => c.gender === 'Male').length;
             const femaleCount = candidates.filter(c => c.gender === 'Female').length;
             const totalCount = candidates.length;
 
             const summaryHtml = `
-                <div class="bg-white p-3 rounded-lg shadow-sm border border-blue-100 mb-4 flex flex-wrap gap-4 text-sm items-center justify-center">
+                <div class="bg-white p-4 rounded-xl shadow-md border border-blue-100 mb-6 flex flex-wrap gap-6 text-base md:text-lg items-center justify-center">
                     <span class="font-bold text-gray-700 uppercase tracking-wide">Count:</span>
-                    <span class="text-blue-800 font-semibold"><i class="fas fa-users mr-1"></i> Total: ${totalCount}</span>
-                    <span class="text-blue-600 font-semibold"><i class="fas fa-male mr-1"></i> Male: ${maleCount}</span>
-                    <span class="text-pink-600 font-semibold"><i class="fas fa-female mr-1"></i> Female: ${femaleCount}</span>
+                    <span class="text-blue-800 font-bold"><i class="fas fa-users mr-2"></i> Total: ${totalCount}</span>
+                    <span class="text-blue-600 font-bold"><i class="fas fa-male mr-2"></i> Male: ${maleCount}</span>
+                    <span class="text-pink-600 font-bold"><i class="fas fa-female mr-2"></i> Female: ${femaleCount}</span>
                 </div>
             `;
 
             let contentHtml = '';
 
-            // ELIMINATION: All Mixed, Sorted by Number, LINE-BY-LINE Layout
             if (currentRound === 'elimination') {
                 const sortedCandidates = candidates.sort((a, b) => a.number - b.number);
                 contentHtml = `
                     <div class="mb-8">
-                        <h3 class="text-blue-900 font-bold mb-4 border-b pb-2">All Candidates (By Number)</h3>
-                        <div class="flex flex-col gap-4">
+                        <h3 class="text-2xl font-bold text-blue-900 mb-6 border-b-4 border-yellow-400 pb-2 inline-block">All Candidates</h3>
+                        <div class="flex flex-col gap-6">
                             ${sortedCandidates.map(c => renderCandidateCard(c, getScore(c.id))).join('')}
                         </div>
                     </div>
                 `;
             } 
-            // FINAL: Split by Gender (Keep grid for finals)
             else {
                 const males = candidates.filter(c => c.gender === 'Male');
                 const females = candidates.filter(c => c.gender === 'Female');
                 contentHtml = `
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
                         <div>
-                            <h3 class="text-blue-900 font-bold mb-4 border-b pb-2">Prom Kings</h3>
-                            <div class="grid grid-cols-1 gap-4">
+                            <h3 class="text-2xl font-bold text-blue-900 mb-6 border-b-4 border-blue-500 pb-2 inline-block">Prom Kings</h3>
+                            <div class="flex flex-col gap-6">
                                 ${males.map(c => renderCandidateCard(c, getScore(c.id))).join('')}
                             </div>
                         </div>
                         <div>
-                            <h3 class="text-pink-900 font-bold mb-4 border-b pb-2">Prom Queens</h3>
-                            <div class="grid grid-cols-1 gap-4">
+                            <h3 class="text-2xl font-bold text-pink-900 mb-6 border-b-4 border-pink-500 pb-2 inline-block">Prom Queens</h3>
+                            <div class="flex flex-col gap-6">
                                 ${females.map(c => renderCandidateCard(c, getScore(c.id))).join('')}
                             </div>
                         </div>
@@ -520,10 +621,10 @@
             container.innerHTML = `
                 <div class="flex flex-col min-h-screen">
                     ${components.header(appData.config.eventName, `${currentRound.toUpperCase()} ROUND`)}
-                    <main class="flex-grow p-4 md:p-8 max-w-6xl mx-auto w-full pb-20">
-                        <div class="flex justify-between items-center mb-4">
-                            <h2 class="text-xl font-bold text-gray-800">Judge Sheet</h2>
-                            <span class="text-sm bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full font-bold uppercase tracking-wider">${currentRound} Round</span>
+                    <main class="flex-grow p-4 md:p-8 max-w-7xl mx-auto w-full pb-20">
+                        <div class="flex flex-col md:flex-row justify-between items-center mb-6">
+                            <h2 class="text-3xl font-bold text-gray-800 mb-2 md:mb-0">Judge Sheet</h2>
+                            <span class="text-lg bg-yellow-100 text-yellow-800 px-4 py-2 rounded-full font-bold uppercase tracking-wider shadow-sm border border-yellow-200">${currentRound} Round</span>
                         </div>
                         
                         ${summaryHtml}
@@ -539,24 +640,42 @@
         function renderCandidateCard(c, existingScore) {
             const isScored = !!existingScore;
             const scoreSum = existingScore ? Object.values(existingScore.scores).reduce((a,b)=>a+parseInt(b),0) : 0;
+            
+            const isMale = c.gender === 'Male';
+            const bgClass = isMale ? 'bg-blue-50 hover:bg-blue-100' : 'bg-pink-50 hover:bg-pink-100';
+            const borderClass = isMale ? 'border-blue-500' : 'border-pink-500';
+            const textClass = isMale ? 'text-blue-900' : 'text-pink-900';
+            const iconBg = isMale ? 'bg-blue-200 text-blue-700 border-blue-300' : 'bg-pink-200 text-pink-700 border-pink-300';
+            const icon = isMale ? '🤴' : '👸';
+
+            // --- INCREASED VISIBILITY OF NUMBER ---
+            const numberBadge = `
+                <div class="absolute top-0 right-0 h-full w-20 flex items-center justify-center bg-gray-900 text-white rounded-l-3xl shadow-lg border-l-4 ${borderClass}">
+                    <span class="text-4xl font-black italic">#${c.number}</span>
+                </div>
+            `;
+
             return `
-            <div onclick="window.openScoringModal(${c.id})" class="bg-white rounded-lg p-4 card-shadow hover:shadow-xl transition cursor-pointer border-l-4 ${c.gender === 'Male' ? 'border-blue-500' : 'border-pink-500'} relative overflow-hidden group w-full">
-                <div class="absolute top-0 right-0 bg-gray-200 text-gray-600 px-2 py-1 text-xs font-bold rounded-bl-lg">#${c.number}</div>
-                ${isScored ? '<div class="absolute top-0 left-0 bg-green-500 text-white px-2 py-1 text-xs font-bold rounded-br-lg"><i class="fas fa-check"></i> Scored</div>' : ''}
-                <div class="flex items-center gap-4">
-                    <div class="h-14 w-14 flex-shrink-0 bg-gray-100 rounded-full flex items-center justify-center text-2xl">
-                        ${c.gender === 'Male' ? '🤴' : '👸'}
+            <div onclick="window.openScoringModal(${c.id})" class="${bgClass} rounded-2xl p-6 card-shadow hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 cursor-pointer border-l-8 ${borderClass} relative overflow-hidden group w-full pr-24">
+                ${numberBadge}
+                
+                ${isScored 
+                    ? `<div class="absolute top-0 left-0 bg-green-500 text-white px-3 py-1 text-sm font-bold rounded-br-xl shadow-sm z-10"><i class="fas fa-check mr-1"></i> Scored</div>` 
+                    : ``
+                }
+                <div class="flex items-center gap-6 mt-2 relative z-0">
+                    <div class="h-20 w-20 flex-shrink-0 ${iconBg} rounded-full border-4 flex items-center justify-center text-4xl shadow-inner">
+                        ${icon}
                     </div>
                     <div class="flex-grow">
-                        <div class="flex flex-col md:flex-row md:items-center md:justify-between">
-                            <div>
-                                <h3 class="font-bold text-gray-800 text-lg leading-tight">${c.name}</h3>
-                                <p class="text-xs text-gray-500 italic">${c.nickname ? `"${c.nickname}"` : ''} ${c.classroom ? ` • ${c.classroom}` : ''}</p>
-                            </div>
-                            <div class="mt-1 md:mt-0">
+                        <div class="flex flex-col">
+                            <h3 class="font-bold ${textClass} text-2xl md:text-3xl leading-tight mb-1">${c.name}</h3>
+                            <p class="text-base md:text-lg text-gray-600 font-semibold italic">${c.nickname ? `"${c.nickname}"` : ''} ${c.classroom ? ` • ${c.classroom}` : ''}</p>
+                            
+                            <div class="mt-3">
                                 ${isScored 
-                                    ? `<span class="inline-block bg-green-100 text-green-800 text-xs px-2 py-1 rounded font-bold">Total: ${scoreSum}</span>` 
-                                    : `<span class="inline-block bg-red-50 text-red-500 text-xs px-2 py-1 rounded">Not scored</span>`
+                                    ? `<span class="inline-block bg-green-100 text-green-800 text-lg px-4 py-1 rounded-lg font-bold border border-green-200 shadow-sm">Total: ${scoreSum}</span>` 
+                                    : `<span class="inline-block bg-white text-red-500 text-base px-3 py-1 rounded border border-red-100 font-bold">Tap to Score</span>`
                                 }
                             </div>
                         </div>
@@ -568,8 +687,8 @@
         // --- SCORING MODAL ---
 
         function renderScoreModal() {
-            return `<div id="score-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-end md:items-center justify-center p-0 md:p-4">
-                <div class="bg-white w-full md:max-w-lg rounded-t-2xl md:rounded-2xl shadow-2xl h-[90vh] md:h-auto overflow-y-auto transform transition-transform duration-300 translate-y-full" id="modal-content"></div>
+            return `<div id="score-modal" class="fixed inset-0 bg-black bg-opacity-60 hidden z-50 flex items-end md:items-center justify-center p-0 md:p-4 backdrop-blur-sm">
+                <div class="bg-white w-full md:max-w-2xl rounded-t-3xl md:rounded-3xl shadow-2xl h-[95vh] md:h-auto overflow-y-auto transform transition-transform duration-300 translate-y-full" id="modal-content"></div>
             </div>`;
         }
 
@@ -580,48 +699,65 @@
             const modal = document.getElementById('score-modal');
             const content = document.getElementById('modal-content');
             const scores = existingScore ? existingScore.scores : {};
-            
-            // Determine active criteria
             const activeCriteria = getCriteriaForRound();
 
             modal.classList.remove('hidden');
             setTimeout(() => content.classList.remove('translate-y-full'), 10);
 
+            const isMale = candidate.gender === 'Male';
+            const headerColor = isMale ? 'bg-blue-100 text-blue-900' : 'bg-pink-100 text-pink-900';
+            const icon = isMale ? '🤴' : '👸';
+
             const criteriaHtml = activeCriteria.map(crit => `
-                <div class="mb-6 border-b pb-4 last:border-0">
-                    <div class="flex justify-between items-start mb-2">
+                <div class="mb-8 border-b border-gray-100 pb-6 last:border-0">
+                    <div class="flex justify-between items-start mb-3">
                         <div class="pr-2">
-                            <label class="font-bold text-gray-800 text-base md:text-lg block leading-tight">${crit.name}</label>
-                            ${crit.subtitle ? `<p class="text-sm text-gray-500 font-lao">${crit.subtitle}</p>` : ''}
-                            ${crit.description ? `<p class="text-xs text-gray-400 mt-1">${crit.description}</p>` : ''}
+                            <label class="font-bold text-gray-800 text-lg md:text-xl block leading-tight">${crit.name}</label>
+                            ${crit.subtitle ? `<p class="text-base text-gray-500 font-lao mt-1">${crit.subtitle}</p>` : ''}
+                            ${crit.description ? `<p class="text-sm text-gray-400 mt-1 italic">${crit.description}</p>` : ''}
                         </div>
-                        <div class="text-right flex-shrink-0">
-                            <span class="text-2xl font-bold text-blue-900"><span id="val-${crit.id}">${scores[crit.id] || 0}</span></span>
-                            <span class="text-sm text-gray-400 font-normal block">/ ${crit.max}</span>
+                        <div class="text-right flex-shrink-0 bg-gray-50 px-3 py-1 rounded-lg border border-gray-200">
+                            <span class="text-3xl font-bold text-blue-900"><span id="val-${crit.id}">${scores[crit.id] || 0}</span></span>
+                            <span class="text-sm text-gray-500 font-bold block">/ ${crit.max}</span>
                         </div>
                     </div>
                     <input type="range" id="input-${crit.id}" min="1" max="${crit.max}" value="${scores[crit.id] || 0}" 
-                        class="w-full h-4 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600 transition-all hover:bg-gray-300"
+                        class="w-full h-6 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600 transition-all hover:bg-gray-300 shadow-inner"
                         oninput="document.getElementById('val-${crit.id}').innerText = this.value; window.updateTotal();">
+                    <div class="flex justify-between text-xs text-gray-400 mt-2 font-bold uppercase tracking-wider">
+                        <span>Min (1)</span>
+                        <span>Max (${crit.max})</span>
+                    </div>
                 </div>
             `).join('');
 
             content.innerHTML = `
-                <div class="sticky top-0 bg-white p-4 border-b flex justify-between items-center z-10 rounded-t-2xl">
-                    <div>
-                        <h3 class="font-bold text-lg">Score #${candidate.number}</h3>
-                        <p class="text-xs text-gray-500">${candidate.name}</p>
+                <div class="sticky top-0 ${headerColor} p-6 border-b flex justify-between items-center z-10">
+                    <div class="flex items-center gap-4">
+                        <div class="text-4xl bg-white rounded-full h-16 w-16 flex items-center justify-center shadow-sm border-2 border-white">${icon}</div>
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <span class="bg-black text-white px-3 py-1 text-base font-black rounded shadow-sm">#${candidate.number}</span>
+                                <h3 class="font-bold text-2xl md:text-3xl leading-none">${candidate.name}</h3>
+                            </div>
+                            <p class="text-sm md:text-base opacity-75 font-bold mt-1">${candidate.nickname || ''} • ${candidate.classroom || ''}</p>
+                        </div>
                     </div>
-                    <button onclick="window.closeModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-xl"></i></button>
+                    <button onclick="window.closeModal()" class="text-gray-500 hover:text-black bg-white rounded-full p-2 shadow-sm hover:shadow-md transition"><i class="fas fa-times text-2xl"></i></button>
                 </div>
-                <div class="p-6">
+                <div class="p-6 md:p-8 bg-white">
                     <form onsubmit="event.preventDefault(); window.saveScores(${candidate.id});">
                         ${criteriaHtml}
-                        <div class="mt-4 bg-blue-50 p-4 rounded-lg flex justify-between items-center border border-blue-100">
-                            <span class="font-bold text-blue-900 uppercase">Total Score</span>
-                            <span class="text-3xl font-bold text-blue-900" id="grand-total">0</span>
+                        <div class="mt-6 bg-gray-900 text-white p-6 rounded-2xl flex justify-between items-center shadow-lg transform hover:scale-[1.01] transition">
+                            <div>
+                                <span class="block text-gray-400 text-sm uppercase tracking-widest font-bold">Total Score</span>
+                                <span class="text-xs text-gray-500">out of 100</span>
+                            </div>
+                            <span class="text-5xl font-bold text-yellow-400" id="grand-total">0</span>
                         </div>
-                        <button type="submit" class="w-full mt-6 bg-gradient-to-r from-blue-700 to-blue-900 text-white font-bold py-4 rounded-lg shadow-lg hover:shadow-xl transition transform active:scale-95">Submit Score</button>
+                        <button type="submit" class="w-full mt-6 bg-gradient-to-r from-blue-600 to-blue-800 text-white text-xl font-bold py-5 rounded-xl shadow-xl hover:shadow-2xl hover:from-blue-700 hover:to-blue-900 transition transform active:scale-95 flex items-center justify-center gap-3">
+                            <i class="fas fa-paper-plane"></i> Submit Score
+                        </button>
                     </form>
                 </div>
             `;
@@ -668,50 +804,40 @@
 
             if (window.tabulatorTab === 'results') {
                 const results = calculateResults(currentRound);
-                // Filter: If Final round, only show finalists
-                const displayResults = currentRound === 'final' 
-                    ? results.filter(r => r.candidate.isFinalist) 
-                    : results;
-
+                const displayResults = currentRound === 'final' ? results.filter(r => r.candidate.isFinalist) : results;
                 const maleResults = displayResults.filter(r => r.candidate.gender === 'Male');
                 const femaleResults = displayResults.filter(r => r.candidate.gender === 'Female');
                 
-                // --- NEW CODE: Summary Stats ---
-                const maleCount = maleResults.length;
-                const femaleCount = femaleResults.length;
-                const totalCount = displayResults.length;
-
                 const summaryHtml = `
                     <div class="bg-white p-4 rounded-xl shadow-lg border border-blue-100 mb-6 flex flex-wrap gap-6 items-center justify-center">
                         <div class="text-center">
-                            <span class="block text-2xl font-bold text-gray-800">${totalCount}</span>
-                            <span class="text-xs font-bold text-gray-400 uppercase tracking-wider">Total Candidates</span>
+                            <span class="block text-2xl font-bold text-gray-800">${displayResults.length}</span>
+                            <span class="text-xs font-bold text-gray-400 uppercase tracking-wider">Total</span>
                         </div>
                         <div class="w-px h-10 bg-gray-200"></div>
                         <div class="text-center">
-                            <span class="block text-2xl font-bold text-blue-600">${maleCount}</span>
+                            <span class="block text-2xl font-bold text-blue-600">${maleResults.length}</span>
                             <span class="text-xs font-bold text-blue-400 uppercase tracking-wider"><i class="fas fa-male mr-1"></i> Male</span>
                         </div>
                         <div class="w-px h-10 bg-gray-200"></div>
                         <div class="text-center">
-                            <span class="block text-2xl font-bold text-pink-600">${femaleCount}</span>
+                            <span class="block text-2xl font-bold text-pink-600">${femaleResults.length}</span>
                             <span class="text-xs font-bold text-pink-400 uppercase tracking-wider"><i class="fas fa-female mr-1"></i> Female</span>
                         </div>
                     </div>
                 `;
-                // -------------------------------
 
                 contentHtml = `
                      ${summaryHtml}
                      <div class="bg-white rounded-xl shadow-lg overflow-hidden mb-8">
-                        <div class="p-4 bg-gray-50 border-b flex justify-between items-center">
-                            <h3 class="font-bold text-gray-700">🤴 Male Rankings</h3>
+                        <div class="p-4 bg-blue-50 border-b flex justify-between items-center">
+                            <h3 class="font-bold text-blue-900 text-lg"><i class="fas fa-mars mr-2"></i> Male Rankings</h3>
                         </div>
                         ${renderResultsTable(maleResults)}
                     </div>
                     <div class="bg-white rounded-xl shadow-lg overflow-hidden">
-                        <div class="p-4 bg-gray-50 border-b flex justify-between items-center">
-                            <h3 class="font-bold text-gray-700">👸 Female Rankings</h3>
+                        <div class="p-4 bg-pink-50 border-b flex justify-between items-center">
+                            <h3 class="font-bold text-pink-900 text-lg"><i class="fas fa-venus mr-2"></i> Female Rankings</h3>
                         </div>
                         ${renderResultsTable(femaleResults)}
                     </div>`;
@@ -723,24 +849,30 @@
                 <div class="flex flex-col min-h-screen">
                     ${components.header("Tabulator Dashboard", "Control Center")}
                     <div class="flex flex-col md:flex-row flex-grow overflow-hidden">
-                        <aside class="w-full md:w-64 bg-white shadow-lg p-4 z-10 flex-shrink-0 overflow-y-auto">
-                            <div class="mb-6">
-                                <h3 class="text-xs font-bold text-gray-400 uppercase mb-2">Navigation</h3>
-                                <button onclick="window.tabulatorTab='results'; window.renderTabulatorViewDirect()" class="w-full text-left px-4 py-2 mb-2 rounded font-bold transition ${window.tabulatorTab === 'results' ? 'bg-blue-100 text-blue-800' : 'hover:bg-gray-100'}"><i class="fas fa-list-ol mr-2"></i> Results</button>
-                                <button onclick="window.tabulatorTab='settings'; window.renderTabulatorViewDirect()" class="w-full text-left px-4 py-2 rounded font-bold transition ${window.tabulatorTab === 'settings' ? 'bg-blue-100 text-blue-800' : 'hover:bg-gray-100'}"><i class="fas fa-cog mr-2"></i> Settings & Data</button>
+                        <aside class="w-full md:w-72 bg-white shadow-lg p-6 z-10 flex-shrink-0 overflow-y-auto">
+                            <div class="mb-8">
+                                <div class="flex justify-between items-center mb-4">
+                                    <h3 class="text-xs font-bold text-gray-400 uppercase">Navigation</h3>
+                                    <button onclick="window.renderTabulatorViewDirect()" class="text-blue-600 text-xs font-bold hover:text-blue-800" title="Refresh"><i class="fas fa-sync-alt"></i> Refresh</button>
+                                </div>
+                                <button onclick="window.tabulatorTab='results'; window.renderTabulatorViewDirect()" class="w-full text-left px-4 py-3 mb-2 rounded-lg font-bold transition ${window.tabulatorTab === 'results' ? 'bg-blue-100 text-blue-900 shadow-inner' : 'hover:bg-gray-100 text-gray-600'}"><i class="fas fa-list-ol mr-3"></i> Results</button>
+                                <button onclick="window.tabulatorTab='settings'; window.renderTabulatorViewDirect()" class="w-full text-left px-4 py-3 rounded-lg font-bold transition ${window.tabulatorTab === 'settings' ? 'bg-blue-100 text-blue-900 shadow-inner' : 'hover:bg-gray-100 text-gray-600'}"><i class="fas fa-cog mr-3"></i> Settings & Data</button>
                             </div>
-                            <div class="mb-6">
-                                <h3 class="text-xs font-bold text-gray-400 uppercase mb-2">Round Control</h3>
-                                <div class="bg-blue-50 p-3 rounded border border-blue-200 mb-2">
-                                    <span class="block text-xl font-bold text-blue-900 capitalize">${currentRound} Round</span>
+                            
+                            <div class="mb-8 pt-6 border-t border-gray-100">
+                                <h3 class="text-xs font-bold text-gray-400 uppercase mb-3">Round Control</h3>
+                                <div class="bg-blue-50 p-4 rounded-lg border border-blue-200 mb-4 text-center">
+                                    <span class="block text-sm text-blue-500 font-bold uppercase tracking-widest mb-1">Current</span>
+                                    <span class="block text-2xl font-black text-blue-900 capitalize font-serif">${currentRound}</span>
                                 </div>
                                 ${currentRound === 'elimination' 
-                                    ? `<button onclick="window.advanceToFinals()" class="w-full text-left px-4 py-3 bg-yellow-500 hover:bg-yellow-600 text-white rounded font-bold transition shadow mb-2"><i class="fas fa-step-forward mr-2"></i> Next: Finals</button>`
+                                    ? `<button onclick="window.advanceToFinals()" class="w-full text-left px-4 py-4 bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-white rounded-lg font-bold transition shadow-lg mb-3 flex items-center justify-center"><i class="fas fa-step-forward mr-2"></i> Next: Finals</button>`
                                     : `
-                                    <button onclick="window.showWinners()" class="w-full text-left px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded font-bold transition shadow mb-2"><i class="fas fa-trophy mr-2"></i> View Winners</button>
-                                    <button onclick="window.resetSystem()" class="w-full text-left px-4 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded font-bold transition mb-2"><i class="fas fa-undo mr-2"></i> Restart</button>
+                                    <button onclick="window.showWinners()" class="w-full text-left px-4 py-4 bg-gradient-to-r from-purple-600 to-purple-800 hover:from-purple-700 hover:to-purple-900 text-white rounded-lg font-bold transition shadow-lg mb-3 flex items-center justify-center"><i class="fas fa-trophy mr-2"></i> View Winners</button>
+                                    <button onclick="window.resetSystem()" class="w-full text-left px-4 py-4 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-bold transition mb-3 flex items-center justify-center"><i class="fas fa-undo mr-2"></i> Restart</button>
                                     `
                                 }
+                                <button onclick="window.exportAllScores()" class="w-full text-left px-4 py-4 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold transition shadow-md flex items-center justify-center"><i class="fas fa-file-excel mr-2"></i> Export All Scores</button>
                             </div>
                         </aside>
                         <main class="flex-grow p-4 md:p-8 overflow-y-auto bg-gray-100">${contentHtml}</main>
@@ -752,31 +884,34 @@
         window.renderTabulatorViewDirect = () => renderTabulatorView(document.getElementById('app'));
 
         function renderResultsTable(results) {
-            if (results.length === 0) return '<div class="p-8 text-center text-gray-400">No data available</div>';
+            if (results.length === 0) return '<div class="p-12 text-center text-gray-400 italic">No candidates available</div>';
             const judges = appData.judges;
             return `
             <div class="overflow-x-auto">
                 <table class="w-full text-sm text-left">
-                    <thead class="text-xs text-gray-700 uppercase bg-gray-100">
+                    <thead class="text-xs text-gray-700 uppercase bg-gray-100 border-b border-gray-200">
                         <tr>
-                            <th class="px-6 py-3">Rank</th>
-                            <th class="px-6 py-3">Candidate</th>
-                            ${judges.map(j => `<th class="px-6 py-3 text-center truncate max-w-[100px]" title="${j}">${j}</th>`).join('')}
-                            <th class="px-6 py-3 text-center bg-blue-50">Total</th>
-                            <th class="px-6 py-3 text-right bg-blue-100">Average</th>
+                            <th class="px-6 py-4 font-black text-gray-900">Rank</th>
+                            <th class="px-6 py-4 font-black text-gray-900">Candidate</th>
+                            ${judges.map(j => `<th class="px-6 py-4 text-center font-bold text-gray-600 bg-gray-50 whitespace-nowrap border-l border-gray-200">
+                                <div>${j}</div>
+                                <button onclick="window.exportJudgeScores('${j}')" class="text-green-600 hover:text-green-800 text-xs font-normal mt-1 underline"><i class="fas fa-download"></i> CSV</button>
+                            </th>`).join('')}
+                            <th class="px-6 py-4 text-center font-black text-blue-900 bg-blue-50 border-l border-blue-100">Total</th>
+                            <th class="px-6 py-4 text-right font-black text-blue-900 bg-blue-100 border-l border-blue-200 text-base">Average</th>
                         </tr>
                     </thead>
                     <tbody>
                         ${results.map((r, index) => `
-                            <tr class="bg-white border-b hover:bg-gray-50">
-                                <td class="px-6 py-4 font-bold text-gray-900">#${index + 1}</td>
+                            <tr class="bg-white border-b hover:bg-gray-50 transition">
+                                <td class="px-6 py-4 font-black text-xl text-gray-400">#${index + 1}</td>
                                 <td class="px-6 py-4">
-                                    <div class="font-medium text-gray-900">${r.candidate.name}</div>
-                                    <div class="text-xs text-gray-500">#${r.candidate.number}</div>
+                                    <div class="font-bold text-gray-900 text-base">${r.candidate.name}</div>
+                                    <div class="text-xs text-gray-500 font-bold bg-gray-100 inline-block px-2 py-0.5 rounded mt-1">#${r.candidate.number}</div>
                                 </td>
-                                ${judges.map(j => `<td class="px-6 py-4 text-center ${r.rawScores[j] ? 'text-gray-800' : 'text-gray-300'}">${r.rawScores[j] || '-'}</td>`).join('')}
-                                <td class="px-6 py-4 text-center font-bold text-blue-800 bg-blue-50">${r.totalScore}</td>
-                                <td class="px-6 py-4 text-right font-bold text-blue-900 text-lg bg-blue-100">${r.average}</td>
+                                ${judges.map(j => `<td class="px-6 py-4 text-center border-l border-gray-100 ${r.rawScores[j] ? 'text-gray-800 font-bold' : 'text-gray-300 italic'}">${r.rawScores[j] || '-'}</td>`).join('')}
+                                <td class="px-6 py-4 text-center font-bold text-blue-800 bg-blue-50 border-l border-blue-100">${r.totalScore}</td>
+                                <td class="px-6 py-4 text-right font-black text-blue-900 text-xl bg-blue-100 border-l border-blue-200">${r.average}</td>
                             </tr>
                         `).join('')}
                     </tbody>
@@ -784,104 +919,65 @@
             </div>`;
         }
 
-        window.showWinners = function() {
-            const results = calculateResults('final').filter(r => r.candidate.isFinalist);
-            const males = results.filter(r => r.candidate.gender === 'Male');
-            const females = results.filter(r => r.candidate.gender === 'Female');
-
-            // Helper to render winner card
-            const winnerCard = (title, r, colorClass, icon) => {
-                if (!r) return '';
-                return `
-                    <div class="bg-white rounded-lg shadow-lg overflow-hidden border-t-8 ${colorClass} text-center p-6 transform hover:scale-105 transition duration-300">
-                        <div class="text-6xl mb-4">${icon}</div>
-                        <h3 class="text-xl font-bold uppercase tracking-widest text-gray-500 mb-2">${title}</h3>
-                        <h2 class="text-3xl font-bold text-gray-900 mb-1 serif">${r.candidate.name}</h2>
-                        <p class="text-gray-500 mb-4">${r.candidate.classroom || ''}</p>
-                        <div class="inline-block bg-gray-100 px-4 py-2 rounded-full text-sm font-bold text-gray-700">
-                            Score: ${r.average}
-                        </div>
-                    </div>
-                `;
-            };
-
-            const html = `
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
-                    ${winnerCard("Prom King", males[0], "border-blue-600", "🤴")}
-                    ${winnerCard("Prom Queen", females[0], "border-pink-600", "👸")}
-                </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-                    ${winnerCard("Prom Prince", males[1], "border-blue-400", "🤵")}
-                    ${winnerCard("Prom Princess", females[1], "border-pink-400", "👰")}
-                </div>
-            `;
-
-            document.getElementById('winners-content').innerHTML = html;
-            document.getElementById('winners-modal').classList.remove('hidden');
-        };
-
         function renderSettingsPanel() {
             return `
-                <div class="space-y-6">
+                <div class="space-y-8 max-w-4xl mx-auto">
                      <!-- Danger Zone -->
-                    <div class="bg-red-50 border border-red-200 p-6 rounded-lg shadow">
-                        <h3 class="text-lg font-bold text-red-700 mb-2"><i class="fas fa-exclamation-triangle mr-2"></i> Danger Zone</h3>
-                        <p class="text-sm text-red-600 mb-4">Manage critical data deletion.</p>
-                        <div class="flex flex-col gap-2">
-                            <button onclick="window.clearScoresOnly()" class="bg-orange-500 text-white px-6 py-2 rounded font-bold hover:bg-orange-600 w-full md:w-auto text-left"><i class="fas fa-eraser mr-2"></i> Clear Scores Only (Keep Candidates)</button>
-                            <button onclick="window.wipeAllData()" class="bg-red-600 text-white px-6 py-2 rounded font-bold hover:bg-red-700 w-full md:w-auto text-left"><i class="fas fa-trash mr-2"></i> Delete All Data (Factory Reset)</button>
+                    <div class="bg-red-50 border-l-8 border-red-500 p-8 rounded-lg shadow-lg">
+                        <h3 class="text-2xl font-bold text-red-800 mb-2"><i class="fas fa-exclamation-triangle mr-2"></i> Danger Zone</h3>
+                        <p class="text-red-700 mb-6 font-semibold">Destructive actions cannot be undone.</p>
+                        <div class="flex flex-col md:flex-row gap-4">
+                            <button onclick="window.clearScoresOnly()" class="bg-orange-500 text-white px-6 py-3 rounded-lg font-bold hover:bg-orange-600 transition shadow"><i class="fas fa-eraser mr-2"></i> Clear Scores Only (Keep Candidates)</button>
+                            <button onclick="window.wipeAllData()" class="bg-red-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-red-700 transition shadow"><i class="fas fa-trash-alt mr-2"></i> Delete All Data (Factory Reset)</button>
                         </div>
                     </div>
 
-                    <!-- Round Configuration -->
-                    <div class="bg-white p-6 rounded-lg shadow">
-                        <h3 class="text-lg font-bold text-blue-900 mb-4 border-b pb-2"><i class="fas fa-cogs mr-2"></i> Round Settings</h3>
-                        <div>
-                            <label class="block text-sm font-bold mb-2">Number of Finalists (per Gender)</label>
-                            <div class="flex gap-2">
-                                <input type="number" id="finalist-count" min="1" max="10" value="${appData.config.finalistCount || 3}" class="p-2 border rounded w-20">
-                                <button onclick="window.saveFinalistCount()" class="bg-blue-600 text-white px-4 py-2 rounded font-bold text-sm">Save</button>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <!-- Bulk CSV Upload -->
+                        <div class="bg-white p-8 rounded-xl shadow-lg border-t-8 border-blue-500">
+                            <h3 class="text-xl font-bold text-blue-900 mb-4 pb-2 border-b"><i class="fas fa-file-csv mr-2"></i> Bulk Upload</h3>
+                            <p class="text-sm text-gray-600 mb-4">CSV Format: <code>Number, Name, Nickname, Classroom, Gender</code></p>
+                            <div class="mb-4">
+                                <button onclick="window.downloadCsvTemplate()" class="text-blue-600 underline font-bold hover:text-blue-800"><i class="fas fa-download mr-1"></i> Download Template</button>
                             </div>
-                            <p class="text-xs text-gray-400 mt-1">How many candidates advance to the final round.</p>
+                            <input type="file" id="csv-upload" accept=".csv" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 mb-4"/>
+                            <button onclick="window.processCsvUpload()" class="w-full bg-blue-600 text-white px-4 py-3 rounded-lg font-bold hover:bg-blue-700 transition shadow">Upload Candidates</button>
                         </div>
-                    </div>
 
-                    <!-- Bulk CSV Upload -->
-                    <div class="bg-white p-6 rounded-lg shadow">
-                        <h3 class="text-lg font-bold text-blue-900 mb-4 border-b pb-2"><i class="fas fa-file-csv mr-2"></i> Bulk Candidate Upload</h3>
-                        <p class="text-sm text-gray-600 mb-2">Upload a CSV file with columns: <code>Number, Name, Nickname, Classroom, Gender</code></p>
-                        <div class="mb-3">
-                            <button onclick="window.downloadCsvTemplate()" class="text-blue-600 underline text-sm hover:text-blue-800"><i class="fas fa-download mr-1"></i> Download CSV Template</button>
+                        <!-- Round Config -->
+                        <div class="bg-white p-8 rounded-xl shadow-lg border-t-8 border-yellow-500">
+                            <h3 class="text-xl font-bold text-blue-900 mb-4 pb-2 border-b"><i class="fas fa-cogs mr-2"></i> Configuration</h3>
+                            <div class="mb-6">
+                                <label class="block text-sm font-bold mb-2 text-gray-700">Finalists per Gender</label>
+                                <div class="flex gap-2">
+                                    <input type="number" id="finalist-count" min="1" max="10" value="${appData.config.finalistCount || 3}" class="p-2 border-2 border-gray-200 rounded w-24 font-bold text-center">
+                                    <button onclick="window.saveFinalistCount()" class="bg-blue-600 text-white px-4 py-2 rounded font-bold text-sm hover:bg-blue-700 transition">Save</button>
+                                </div>
+                            </div>
+                            
+                            <h4 class="font-bold text-sm text-gray-700 mb-2">Judges List</h4>
+                            <div id="judge-inputs" class="space-y-2 mb-4 max-h-40 overflow-y-auto pr-2">
+                                ${appData.judges.map((j, i) => `<input type="text" id="judge-name-${i}" value="${j}" class="w-full p-2 border rounded text-sm" placeholder="Judge ${i+1}">`).join('')}
+                            </div>
+                            <div class="flex gap-2">
+                                <input type="number" id="judge-count" min="1" max="20" value="${appData.judges.length}" class="p-2 border rounded w-16 text-center text-sm">
+                                <button onclick="window.generateJudgeInputs()" class="bg-gray-200 px-3 py-2 rounded text-xs font-bold hover:bg-gray-300">Set Count</button>
+                                <button onclick="window.saveJudges()" class="flex-grow bg-green-600 text-white px-4 py-2 rounded font-bold text-sm hover:bg-green-700 shadow">Update Judges</button>
+                            </div>
                         </div>
-                        <input type="file" id="csv-upload" accept=".csv" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 mb-3"/>
-                        <button onclick="window.processCsvUpload()" class="bg-green-600 text-white px-4 py-2 rounded font-bold hover:bg-green-700">Process CSV</button>
-                    </div>
-
-                    <!-- Judges Management -->
-                    <div class="bg-white p-6 rounded-lg shadow">
-                        <h3 class="text-lg font-bold text-blue-900 mb-4 border-b pb-2"><i class="fas fa-users-cog mr-2"></i> Judges</h3>
-                        <div class="flex gap-2 mb-4">
-                             <input type="number" id="judge-count" min="1" max="20" value="${appData.judges.length}" class="p-2 border rounded w-20">
-                             <button onclick="window.generateJudgeInputs()" class="bg-blue-600 text-white px-4 py-2 rounded font-bold text-sm">Set Count</button>
-                        </div>
-                        <div id="judge-inputs" class="grid grid-cols-1 md:grid-cols-3 gap-2 mb-4">
-                            ${appData.judges.map((j, i) => `<input type="text" id="judge-name-${i}" value="${j}" class="p-2 border rounded" placeholder="Judge ${i+1}">`).join('')}
-                        </div>
-                        <button onclick="window.saveJudges()" class="w-full bg-green-600 text-white py-2 rounded font-bold">Save Judge List</button>
                     </div>
 
                     <!-- Branding -->
-                    <div class="bg-white p-6 rounded-lg shadow">
-                        <h3 class="text-lg font-bold text-blue-900 mb-4 border-b pb-2"><i class="fas fa-paint-brush mr-2"></i> Branding</h3>
-                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="bg-white p-8 rounded-xl shadow-lg border-t-8 border-gray-500">
+                        <h3 class="text-xl font-bold text-blue-900 mb-4 pb-2 border-b"><i class="fas fa-paint-brush mr-2"></i> Branding</h3>
+                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
                                 <label class="block text-sm font-bold mb-2">School Logo</label>
                                 <input type="file" accept="image/*" onchange="window.handleImageUpload(this, 'logo')" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
                             </div>
                             <div>
-                                <label class="block text-sm font-bold mb-2">Favicon / App Icon</label>
+                                <label class="block text-sm font-bold mb-2">Favicon</label>
                                 <input type="file" accept="image/*" onchange="window.handleImageUpload(this, 'favicon')" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
-                                <p class="text-xs text-gray-400 mt-1">Shows in browser tab & home screen.</p>
                             </div>
                         </div>
                     </div>
@@ -897,7 +993,7 @@
             let html = '';
             for(let i=0; i<count; i++) {
                 const existingName = appData.judges[i] || `Judge ${i+1}`;
-                html += `<input type="text" id="judge-name-${i}" value="${existingName}" class="p-2 border rounded" placeholder="Judge Name">`;
+                html += `<input type="text" id="judge-name-${i}" value="${existingName}" class="w-full p-2 border rounded text-sm" placeholder="Judge Name">`;
             }
             container.innerHTML = html;
         };
@@ -962,7 +1058,7 @@
                 const lines = text.split('\n');
                 let added = 0;
                 
-                lines.forEach(line => {
+                lines.forEach((line, index) => {
                     const parts = line.split(',');
                     if (parts.length >= 5) {
                         const no = parseInt(parts[0].trim());
@@ -973,8 +1069,10 @@
                         
                         if (no && name && (genderStr.includes('male') || genderStr.includes('female'))) {
                             const gender = genderStr.includes('fe') ? 'Female' : 'Male';
+                            const uniqueId = Date.now() + '-' + index + '-' + Math.random().toString(36).substr(2, 9);
+                            
                             appData.candidates.push({
-                                id: Date.now() + Math.random(),
+                                id: uniqueId,
                                 number: no,
                                 name: name,
                                 nickname: nickname,
@@ -993,8 +1091,10 @@
                         
                         if (no && name && (genderStr.includes('male') || genderStr.includes('female'))) {
                             const gender = genderStr.includes('fe') ? 'Female' : 'Male';
+                            const uniqueId = Date.now() + '-' + index + '-' + Math.random().toString(36).substr(2, 9);
+
                             appData.candidates.push({
-                                id: Date.now() + Math.random(),
+                                id: uniqueId,
                                 number: no,
                                 name: name,
                                 gender: gender,
