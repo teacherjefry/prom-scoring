@@ -11,7 +11,7 @@
     <link id="apple-touch-icon" rel="apple-touch-icon" href="data:image/png;base64,">
 
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Lato:wght@300;400;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Lato:wght@300;400;700&family=Noto+Sans+Lao:wght@400;700&display=swap');
 
         :root {
             --primary: #1e3a8a; /* Navy Blue */
@@ -20,7 +20,7 @@
         }
 
         body {
-            font-family: 'Lato', sans-serif;
+            font-family: 'Lato', 'Noto Sans Lao', sans-serif;
             background-color: var(--bg-light);
         }
 
@@ -87,6 +87,19 @@
         </div>
     </div>
 
+    <!-- Winners Modal -->
+    <div id="winners-modal" class="fixed inset-0 bg-black bg-opacity-90 hidden z-[80] flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl max-w-4xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="bg-yellow-500 p-4 flex justify-between items-center text-blue-900">
+                <h2 class="text-2xl font-bold serif"><i class="fas fa-crown mr-2"></i> Official Results</h2>
+                <button onclick="document.getElementById('winners-modal').classList.add('hidden')" class="hover:text-white"><i class="fas fa-times text-2xl"></i></button>
+            </div>
+            <div id="winners-content" class="p-8 overflow-y-auto bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-blue-50">
+                <!-- Winners injected here -->
+            </div>
+        </div>
+    </div>
+
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getFirestore, doc, onSnapshot, setDoc, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
@@ -111,15 +124,25 @@
                 schoolName: "Neerada School",
                 eventName: "Prom King & Queen Search",
                 currentRound: "elimination", 
-                finalistCount: 3, // Default Top 3
+                finalistCount: 3, 
                 logoData: null,
                 faviconData: null
             },
-            criteria: [
-                { id: 'total', name: 'Total Score', description: 'Poise & Bearing, Stage Presence, Overall Appearance, Audience Impact', max: 100 }
-            ],
+            // Split Criteria by Round
+            criteria: {
+                elimination: [
+                    { id: 'total', name: 'Total Score', description: 'Poise & Bearing, Stage Presence, Overall Appearance, Audience Impact', max: 100 }
+                ],
+                final: [
+                    { id: 'stage', name: 'STAGE PRESENTATION', subtitle: 'ການສະແດງອອກທາງລັກສະນະທ່າທ່າງຂອງສີໜ້າ ແລະ ການຍ່າງ', max: 40 },
+                    { id: 'confidence', name: 'Confidence & Articulation', subtitle: 'ຄວາມໝັ້ນໃຈໃນການເວັ້າ', max: 20 },
+                    { id: 'relevance', name: 'Relevance', subtitle: 'ຄວາມກ່ຽວຂ້ອງຂອງການຕອບຄໍາຖາມ', max: 20 },
+                    { id: 'audience', name: 'Audience Impact', subtitle: 'ຜູ້ຊົມເຊຍ', max: 10 },
+                    { id: 'impression', name: 'Judge\'s Personal Impression', subtitle: 'ຄວາມປະທັບໃຈສ່ວນຕົວຂອງກຳມະການ', max: 10 }
+                ]
+            },
             judges: ["Judge 1", "Judge 2", "Judge 3"],
-            candidates: [], // Empty by default
+            candidates: [], 
             scores: [] 
         };
 
@@ -130,31 +153,22 @@
         let currentUser = null; 
         let unsubscribeSnapshot = null;
         
-        // Environment Variables (Provided by Canvas)
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'neerada-prom-default';
 
         // --- INIT LOGIC ---
 
         window.initApp = async function() {
-            // 1. Try to recover user session from LocalStorage (Persistence)
             const savedUser = localStorage.getItem('neerada_user');
             if (savedUser) {
                 currentUser = JSON.parse(savedUser);
             }
 
-            // 2. Try to init Firebase
             let config = null;
-            
-            // Priority 0: Hardcoded Config (For GitHub)
             if (HARDCODED_FIREBASE_CONFIG) {
                 config = HARDCODED_FIREBASE_CONFIG;
-            }
-            // Priority 1: Environment Variable (Canvas)
-            else if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+            } else if (typeof __firebase_config !== 'undefined' && __firebase_config) {
                 config = JSON.parse(__firebase_config);
-            } 
-            // Priority 2: User manually entered config (stored in LS)
-            else {
+            } else {
                 const manualConfig = localStorage.getItem('neerada_firebase_config');
                 if (manualConfig) config = JSON.parse(manualConfig);
             }
@@ -162,7 +176,7 @@
             if (config) {
                 await connectFirebase(config);
             } else {
-                renderLanding(document.getElementById('app')); // Render landing with "Configure" option
+                renderLanding(document.getElementById('app')); 
             }
         };
 
@@ -172,7 +186,6 @@
                 auth = getAuth(app);
                 db = getFirestore(app);
                 
-                // Auth Priority: Custom Token -> Anonymous
                 try {
                     if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                         await signInWithCustomToken(auth, __initial_auth_token);
@@ -180,11 +193,9 @@
                         throw new Error("No environment token");
                     }
                 } catch (e) {
-                    // Fallback to anonymous auth
                     await signInAnonymously(auth);
                 }
                 
-                // Set up Realtime Listener
                 setupRealtimeListener();
                 
             } catch (error) {
@@ -194,17 +205,18 @@
         }
 
         function setupRealtimeListener() {
-            // Strict Path Compliance: artifacts/{appId}/public/data/{collection}/{doc}
-            // We use 'scoring_system' as the collection and 'state' as the document
             const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'scoring_system', 'state');
             
             unsubscribeSnapshot = onSnapshot(docRef, (docSnap) => {
                 if (docSnap.exists()) {
                     appData = docSnap.data();
+                    // Migration check for old criteria structure
+                    if (Array.isArray(appData.criteria)) {
+                        appData.criteria = DEFAULT_DATA.criteria; // Auto-migrate structure
+                    }
                     initBranding();
-                    renderApp(); // Re-render UI on every update
+                    renderApp(); 
                 } else {
-                    // Initialize DB if empty
                     setDoc(docRef, DEFAULT_DATA);
                     appData = JSON.parse(JSON.stringify(DEFAULT_DATA));
                     renderApp();
@@ -214,12 +226,10 @@
             });
         }
 
-        // Global Action to Save Data
         window.saveData = async function(newData) {
             if (!db) return;
-            appData = newData; // Optimistic update
+            appData = newData; 
             try {
-                // Strict Path Compliance
                 const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'scoring_system', 'state');
                 await setDoc(docRef, newData);
             } catch (e) {
@@ -227,20 +237,15 @@
             }
         };
 
-        // --- ERROR HANDLING ---
-
         function handleFirebaseError(error) {
             console.error("Firebase Error:", error);
-            
             let isCritical = false;
             let msg = error.message;
 
-            // Check for Resource Exhausted (Quota)
             if (error.code === 'resource-exhausted' || (msg && msg.toLowerCase().includes('quota'))) {
                 isCritical = true;
                 msg = "Daily database quota exceeded. Please try again tomorrow or upgrade the plan.";
-            } 
-            else if (error.code === 'permission-denied') {
+            } else if (error.code === 'permission-denied') {
                 msg = "Permission Denied. Check Firestore Rules (Test Mode enabled?).";
             }
 
@@ -265,7 +270,7 @@
                 localStorage.setItem('neerada_firebase_config', JSON.stringify(config));
                 document.getElementById('config-modal').classList.add('hidden');
                 showToast("Config Saved. Connecting...");
-                window.location.reload(); // Reload to init with new config
+                window.location.reload(); 
             } catch (e) {
                 alert("Invalid JSON Format");
             }
@@ -288,6 +293,13 @@
         // --- AUTH & ROUTING ---
 
         window.login = function(role, name) {
+            if (role === 'tabulator') {
+                const code = prompt("Enter Admin Code:");
+                if (code !== '0000') {
+                    alert("Incorrect Access Code");
+                    return;
+                }
+            }
             currentUser = { role, name };
             localStorage.setItem('neerada_user', JSON.stringify(currentUser));
             renderApp();
@@ -412,6 +424,14 @@
             return appData.candidates.filter(c => c.active);
         }
 
+        function getCriteriaForRound() {
+            const round = appData.config.currentRound;
+            // Handle legacy structure where criteria was array
+            if (Array.isArray(appData.criteria)) return appData.criteria;
+            
+            return appData.criteria[round] || appData.criteria['elimination'];
+        }
+
         function calculateResults(round) {
             const results = {};
             const relevantScores = appData.scores.filter(s => s.round === round);
@@ -429,11 +449,8 @@
                 }
             });
 
-            const totalJudges = appData.judges.length;
-
             Object.keys(results).forEach(id => {
                 if (results[id].judgeCounts > 0) {
-                    // Average Logic: Total Score divided by number of judges who actually voted
                     results[id].average = (results[id].totalScore / results[id].judgeCounts).toFixed(2);
                 } else {
                     results[id].average = 0;
@@ -563,33 +580,36 @@
             const modal = document.getElementById('score-modal');
             const content = document.getElementById('modal-content');
             const scores = existingScore ? existingScore.scores : {};
+            
+            // Determine active criteria
+            const activeCriteria = getCriteriaForRound();
 
             modal.classList.remove('hidden');
             setTimeout(() => content.classList.remove('translate-y-full'), 10);
 
-            const criteriaHtml = appData.criteria.map(crit => `
-                <div class="mb-6">
-                    <div class="flex justify-between items-end mb-2">
-                        <div>
-                            <label class="font-bold text-gray-800 text-lg block">${crit.name}</label>
-                            ${crit.description ? `<p class="text-xs text-gray-500 font-normal">${crit.description}</p>` : ''}
+            const criteriaHtml = activeCriteria.map(crit => `
+                <div class="mb-6 border-b pb-4 last:border-0">
+                    <div class="flex justify-between items-start mb-2">
+                        <div class="pr-2">
+                            <label class="font-bold text-gray-800 text-base md:text-lg block leading-tight">${crit.name}</label>
+                            ${crit.subtitle ? `<p class="text-sm text-gray-500 font-lao">${crit.subtitle}</p>` : ''}
+                            ${crit.description ? `<p class="text-xs text-gray-400 mt-1">${crit.description}</p>` : ''}
                         </div>
-                        <span class="text-2xl font-bold text-blue-900"><span id="val-${crit.id}">${scores[crit.id] || 0}</span><span class="text-sm text-gray-400 font-normal"> / ${crit.max}</span></span>
+                        <div class="text-right flex-shrink-0">
+                            <span class="text-2xl font-bold text-blue-900"><span id="val-${crit.id}">${scores[crit.id] || 0}</span></span>
+                            <span class="text-sm text-gray-400 font-normal block">/ ${crit.max}</span>
+                        </div>
                     </div>
                     <input type="range" id="input-${crit.id}" min="1" max="${crit.max}" value="${scores[crit.id] || 0}" 
                         class="w-full h-4 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600 transition-all hover:bg-gray-300"
                         oninput="document.getElementById('val-${crit.id}').innerText = this.value; window.updateTotal();">
-                    <div class="flex justify-between text-xs text-gray-400 mt-1">
-                        <span>1</span>
-                        <span>${crit.max}</span>
-                    </div>
                 </div>
             `).join('');
 
             content.innerHTML = `
-                <div class="sticky top-0 bg-white p-4 border-b flex justify-between items-center z-10">
+                <div class="sticky top-0 bg-white p-4 border-b flex justify-between items-center z-10 rounded-t-2xl">
                     <div>
-                        <h3 class="font-bold text-lg">Score Candidate #${candidate.number}</h3>
+                        <h3 class="font-bold text-lg">Score #${candidate.number}</h3>
                         <p class="text-xs text-gray-500">${candidate.name}</p>
                     </div>
                     <button onclick="window.closeModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-xl"></i></button>
@@ -597,11 +617,11 @@
                 <div class="p-6">
                     <form onsubmit="event.preventDefault(); window.saveScores(${candidate.id});">
                         ${criteriaHtml}
-                        <div class="mt-6 bg-gray-100 p-4 rounded-lg flex justify-between items-center">
-                            <span class="font-bold text-gray-700">Total</span>
-                            <span class="text-2xl font-bold text-blue-900" id="grand-total">0</span>
+                        <div class="mt-4 bg-blue-50 p-4 rounded-lg flex justify-between items-center border border-blue-100">
+                            <span class="font-bold text-blue-900 uppercase">Total Score</span>
+                            <span class="text-3xl font-bold text-blue-900" id="grand-total">0</span>
                         </div>
-                        <button type="submit" class="w-full mt-6 bg-blue-900 text-white font-bold py-3 rounded-lg shadow-lg">Submit Score</button>
+                        <button type="submit" class="w-full mt-6 bg-gradient-to-r from-blue-700 to-blue-900 text-white font-bold py-4 rounded-lg shadow-lg hover:shadow-xl transition transform active:scale-95">Submit Score</button>
                     </form>
                 </div>
             `;
@@ -610,7 +630,8 @@
 
         window.updateTotal = function() {
             let total = 0;
-            appData.criteria.forEach(c => total += (parseInt(document.getElementById(`input-${c.id}`).value) || 0));
+            const activeCriteria = getCriteriaForRound();
+            activeCriteria.forEach(c => total += (parseInt(document.getElementById(`input-${c.id}`).value) || 0));
             document.getElementById('grand-total').innerText = total;
         };
 
@@ -621,9 +642,9 @@
 
         window.saveScores = function(cId) {
             const scores = {};
-            appData.criteria.forEach(c => scores[c.id] = document.getElementById(`input-${c.id}`).value);
+            const activeCriteria = getCriteriaForRound();
+            activeCriteria.forEach(c => scores[c.id] = document.getElementById(`input-${c.id}`).value);
             
-            // Update Local Data First
             appData.scores = appData.scores.filter(s => !(s.round === appData.config.currentRound && s.judge === currentUser.name && s.candidateId === cId));
             appData.scores.push({
                 round: appData.config.currentRound,
@@ -633,10 +654,8 @@
                 timestamp: new Date().toISOString()
             });
 
-            // Sync to Firebase
             window.saveData(appData);
             window.closeModal();
-            // Re-render handled by snapshot listener, but for immediate UI feedback we can call it if needed
         };
 
 
@@ -649,8 +668,13 @@
 
             if (window.tabulatorTab === 'results') {
                 const results = calculateResults(currentRound);
-                const maleResults = results.filter(r => r.candidate.gender === 'Male');
-                const femaleResults = results.filter(r => r.candidate.gender === 'Female');
+                // Filter: If Final round, only show finalists
+                const displayResults = currentRound === 'final' 
+                    ? results.filter(r => r.candidate.isFinalist) 
+                    : results;
+
+                const maleResults = displayResults.filter(r => r.candidate.gender === 'Male');
+                const femaleResults = displayResults.filter(r => r.candidate.gender === 'Female');
                 
                 contentHtml = `
                      <div class="bg-white rounded-xl shadow-lg overflow-hidden mb-8">
@@ -686,7 +710,10 @@
                                 </div>
                                 ${currentRound === 'elimination' 
                                     ? `<button onclick="window.advanceToFinals()" class="w-full text-left px-4 py-3 bg-yellow-500 hover:bg-yellow-600 text-white rounded font-bold transition shadow mb-2"><i class="fas fa-step-forward mr-2"></i> Next: Finals</button>`
-                                    : `<button onclick="window.resetSystem()" class="w-full text-left px-4 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded font-bold transition mb-2"><i class="fas fa-undo mr-2"></i> Restart</button>`
+                                    : `
+                                    <button onclick="window.showWinners()" class="w-full text-left px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded font-bold transition shadow mb-2"><i class="fas fa-trophy mr-2"></i> View Winners</button>
+                                    <button onclick="window.resetSystem()" class="w-full text-left px-4 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded font-bold transition mb-2"><i class="fas fa-undo mr-2"></i> Restart</button>
+                                    `
                                 }
                             </div>
                         </aside>
@@ -696,7 +723,6 @@
                 </div>`;
         }
         
-        // Expose to global scope for button clicks
         window.renderTabulatorViewDirect = () => renderTabulatorView(document.getElementById('app'));
 
         function renderResultsTable(results) {
@@ -731,6 +757,42 @@
                 </table>
             </div>`;
         }
+
+        window.showWinners = function() {
+            const results = calculateResults('final').filter(r => r.candidate.isFinalist);
+            const males = results.filter(r => r.candidate.gender === 'Male');
+            const females = results.filter(r => r.candidate.gender === 'Female');
+
+            // Helper to render winner card
+            const winnerCard = (title, r, colorClass, icon) => {
+                if (!r) return '';
+                return `
+                    <div class="bg-white rounded-lg shadow-lg overflow-hidden border-t-8 ${colorClass} text-center p-6 transform hover:scale-105 transition duration-300">
+                        <div class="text-6xl mb-4">${icon}</div>
+                        <h3 class="text-xl font-bold uppercase tracking-widest text-gray-500 mb-2">${title}</h3>
+                        <h2 class="text-3xl font-bold text-gray-900 mb-1 serif">${r.candidate.name}</h2>
+                        <p class="text-gray-500 mb-4">${r.candidate.classroom || ''}</p>
+                        <div class="inline-block bg-gray-100 px-4 py-2 rounded-full text-sm font-bold text-gray-700">
+                            Score: ${r.average}
+                        </div>
+                    </div>
+                `;
+            };
+
+            const html = `
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
+                    ${winnerCard("Prom King", males[0], "border-blue-600", "🤴")}
+                    ${winnerCard("Prom Queen", females[0], "border-pink-600", "👸")}
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+                    ${winnerCard("Prom Prince", males[1], "border-blue-400", "🤵")}
+                    ${winnerCard("Prom Princess", females[1], "border-pink-400", "👰")}
+                </div>
+            `;
+
+            document.getElementById('winners-content').innerHTML = html;
+            document.getElementById('winners-modal').classList.remove('hidden');
+        };
 
         function renderSettingsPanel() {
             return `
@@ -873,7 +935,6 @@
                 
                 lines.forEach(line => {
                     const parts = line.split(',');
-                    // Format: Number, Name, Nickname, Classroom, Gender
                     if (parts.length >= 5) {
                         const no = parseInt(parts[0].trim());
                         const name = parts[1].trim();
@@ -896,7 +957,6 @@
                             added++;
                         }
                     } 
-                    // Fallback for simple 3-column CSV: Number, Name, Gender
                     else if (parts.length >= 3 && parts.length < 5) {
                         const no = parseInt(parts[0].trim());
                         const name = parts[1].trim();
